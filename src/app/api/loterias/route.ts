@@ -14,42 +14,41 @@ interface CaixaResultado {
   };
 }
 
-const CAIXA_IDS: Record<string, number> = {
-  lotofacil: 1,
-  megasena: 2,
-  quina: 3,
-  lotomania: 4,
-  duplasena: 5,
-  timemania: 6,
-  diadesorte: 7,
-  "maismilionaria": 8,
-  supersete: 9,
+const CAIXA_SLUG_MAP: Record<string, string> = {
+  lotofacil: "lotofacil",
+  megasena: "megasena",
+  quina: "quina",
+  lotomania: "lotomania",
+  duplasena: "duplasena",
+  timemania: "timemania",
+  diadesorte: "diadesorte",
+  maismilionaria: "maismilionaria",
+  supersete: "supersete",
 };
 
-async function fetchCaixaResultado(slug: string): Promise<CaixaResultado | null> {
-  const caixaId = CAIXA_IDS[slug];
-  if (!caixaId) return null;
+async function fetchCaixaUltimoConcurso(slug: string): Promise<CaixaResultado | null> {
+  const caixaSlug = CAIXA_SLUG_MAP[slug];
+  if (!caixaSlug) return null;
 
   try {
-      const res = await fetch(
-        `https://servicebus2.caixa.gov.br/portaldeloterias/api/${slug}/${caixaId}`,
-        { headers: { Accept: "application/json" } }
-      );
+    const res = await fetch(
+      `https://servicebus2.caixa.gov.br/portaldeloterias/api/${caixaSlug}`,
+      {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(8000),
+      }
+    );
     if (!res.ok) return null;
-    const data = await res.json();
-    return data as CaixaResultado;
+    const text = await res.text();
+    if (!text || text.trim() === "") return null;
+    try {
+      return JSON.parse(text) as CaixaResultado;
+    } catch {
+      return null;
+    }
   } catch {
     return null;
   }
-}
-
-function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(value);
 }
 
 export async function GET() {
@@ -57,7 +56,7 @@ export async function GET() {
 
   const resultados = await Promise.allSettled(
     loterias.map(async (loteria) => {
-      const caixaData = await fetchCaixaResultado(loteria.slug);
+      const caixaData = await fetchCaixaUltimoConcurso(loteria.slug);
 
       if (caixaData?.concurso) {
         const c = caixaData.concurso;
@@ -70,6 +69,7 @@ export async function GET() {
           acumulou: c.acumulou,
           data_sorteio: c.data,
           proximo_concurso: c.proximo_concurso,
+          premiacoes: c.premiacoes,
           fonte: "caixa" as const,
         };
       }
@@ -83,6 +83,7 @@ export async function GET() {
         acumulou: false,
         data_sorteio: "",
         proximo_concurso: null,
+        premiacoes: [],
         fonte: "indisponivel" as const,
       };
     })
@@ -100,6 +101,7 @@ export async function GET() {
           acumulou: false,
           data_sorteio: "",
           proximo_concurso: null,
+          premiacoes: [],
           fonte: "erro" as const,
         }
   );

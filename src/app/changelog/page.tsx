@@ -30,6 +30,48 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "2.2.0",
+    date: "2026-09-09",
+    type: "minor",
+    tag: "Backend Fix + DB Migration",
+    sections: [
+      {
+        title: "Corrigido",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+        color: "text-green-500",
+        items: [
+          "API /api/loterias: busca o último concurso da CAIXA (sem número fixo) com timeout de 8s",
+          "API /api/lotes: corrigida para usar tabelas lotes_geracao/jogos_gerados (não lotes/jogos)",
+          "API /api/lotes: adicionado handler POST para salvar jogos criados manualmente",
+          "Schema: estrategia_id agora é nullable em lotes_geracao e jogos_gerados",
+          "API /api/admin/setup: criação automática de estratégias seed no banco",
+          "Landing page: exibe resultados reais da CAIXA (último concurso de cada loteria)",
+        ],
+      },
+      {
+        title: "Criar Jogo",
+        icon: <Palette className="w-5 h-5" />,
+        color: "text-purple-500",
+        items: [
+          "Seletor de loteria com ícones, preço e próximo sorteio",
+          "Exibição do valor da aposta (R$) na barra de seleção",
+          "Botão 'Salvar' que grava jogo no Supabase via API",
+          "Feedback visual de salvamento (loading → check → texto)",
+        ],
+      },
+      {
+        title: "Infraestrutura",
+        icon: <Database className="w-5 h-5" />,
+        color: "text-blue-500",
+        items: [
+          "Migration SQL para tornar estrategia_id nullable",
+          "Seed de 12 estratégias no banco via /api/admin/setup",
+          "ER diagram atualizado com colunas nullable",
+        ],
+      },
+    ],
+  },
+  {
     version: "2.1.0",
     date: "2026-09-09",
     type: "minor",

@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ArrowLeft, PenTool, Target, RotateCcw, CheckCircle2 } from "lucide-react";
-import { getLoteriaPorSlug } from "@/lib/loterias";
+import { ArrowLeft, PenTool, Target, RotateCcw, CheckCircle2, Calendar, Coins, Save, Loader2 } from "lucide-react";
+import { LOTERIAS, getLoteriaPorSlug } from "@/lib/loterias";
 import { ShareGame } from "@/components/lottery/share-game";
 
 interface Analise {
@@ -28,11 +28,14 @@ const ESTRATEGIAS = [
 
 export default function CriarJogoPage() {
   const params = useParams();
+  const router = useRouter();
   const slug = params.loteria as string;
   const loteria = getLoteriaPorSlug(slug);
 
   const [dezenas, setDezenas] = useState<number[]>([]);
   const [analise, setAnalise] = useState<Analise | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
 
   const todosNumeros = useMemo(() => {
     if (!loteria) return [];
@@ -105,6 +108,29 @@ export default function CriarJogoPage() {
     return "Baixo";
   };
 
+  const LOTERIA_ICONS: Record<string, string> = {
+    lotofacil: "⭐", lotomania: "🎱", megasena: "🏆", quina: "💎",
+    duplasena: "🔄", timemania: "⚽", diadesorte: "🌟", maismilionaria: "💰", supersete: "7️⃣",
+  };
+
+  const calcularProximoSorteio = (dias: string[]): string => {
+    const agora = new Date();
+    const diaAtual = agora.getDay();
+    const mapaDia: Record<string, number> = {
+      domingo: 0, segunda: 1, terca: 2, quarta: 3, quinta: 4, sexta: 5, sabado: 6,
+    };
+    const diasNumeros = dias.map(d => mapaDia[d]).sort((a, b) => a - b);
+    let menorDias = 8;
+    for (const d of diasNumeros) {
+      let diff = d - diaAtual;
+      if (diff <= 0) diff += 7;
+      if (diff < menorDias) menorDias = diff;
+    }
+    const proximo = new Date(agora);
+    proximo.setDate(proximo.getDate() + menorDias);
+    return proximo.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-6 max-w-3xl">
@@ -128,18 +154,63 @@ export default function CriarJogoPage() {
           </div>
         </div>
 
+        {/* Lottery Selector */}
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+            Escolha a Loteria
+          </h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            {LOTERIAS.filter(l => l.ativo).map(l => {
+              const isSelected = l.slug === slug;
+              return (
+                <button
+                  key={l.slug}
+                  onClick={() => router.push(`/criar-jogo/${l.slug}`)}
+                  className={`relative flex flex-col items-center p-3 rounded-xl border-2 transition-all duration-200 text-center cursor-pointer ${
+                    isSelected
+                      ? "border-primary bg-primary/5 shadow-md shadow-primary/10"
+                      : "border-border bg-card hover:border-primary/40 hover:bg-accent/50"
+                  }`}
+                >
+                  <span className="text-2xl mb-1">{LOTERIA_ICONS[l.slug] || "🎲"}</span>
+                  <span className={`text-xs font-semibold leading-tight ${isSelected ? "text-primary" : "text-foreground"}`}>
+                    {l.nome}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5 flex items-center gap-0.5">
+                    <Coins className="h-2.5 w-2.5" />
+                    R$ {l.preco_aposta_base.toFixed(2)}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground/70 flex items-center gap-0.5">
+                    <Calendar className="h-2.5 w-2.5" />
+                    {calcularProximoSorteio(l.dias_sorteio)}
+                  </span>
+                  {isSelected && (
+                    <CheckCircle2 className="absolute top-1.5 right-1.5 h-3.5 w-3.5 text-primary" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         {/* Selection Status Bar */}
         <div className="mb-4 p-4 rounded-xl bg-card border border-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-muted-foreground">
               Dezenas selecionadas
             </span>
-            <span className="text-sm font-bold">
-              <span className={dezenas.length === loteria.qtd_dezenas_padrao ? "text-emerald-500" : ""}>
-                {dezenas.length}
+            <div className="flex items-center gap-3">
+              <Badge variant="outline" className="text-xs gap-1">
+                <Coins className="h-3 w-3" />
+                R$ {loteria.preco_aposta_base.toFixed(2)}
+              </Badge>
+              <span className="text-sm font-bold">
+                <span className={dezenas.length === loteria.qtd_dezenas_padrao ? "text-emerald-500" : ""}>
+                  {dezenas.length}
+                </span>
+                <span className="text-muted-foreground"> / {loteria.qtd_dezenas_padrao}</span>
               </span>
-              <span className="text-muted-foreground"> / {loteria.qtd_dezenas_padrao}</span>
-            </span>
+            </div>
           </div>
 
           {/* Selected Badges */}
@@ -223,15 +294,54 @@ export default function CriarJogoPage() {
           </CardContent>
         </Card>
 
-        {/* Analyze Button */}
-        <Button
-          onClick={handleAnalisar}
-          disabled={dezenas.length < loteria.qtd_dezenas_min}
-          className="w-full h-12 text-base font-semibold mb-6 gap-2"
-        >
-          <Target className="h-5 w-5" />
-          Analisar Jogo
-        </Button>
+        {/* Analyze + Save Buttons */}
+        <div className="flex gap-2 mb-6">
+          <Button
+            onClick={handleAnalisar}
+            disabled={dezenas.length < loteria.qtd_dezenas_min}
+            className="flex-1 h-12 text-base font-semibold gap-2"
+          >
+            <Target className="h-5 w-5" />
+            Analisar
+          </Button>
+          <Button
+            onClick={async () => {
+              if (dezenas.length < loteria.qtd_dezenas_min) return;
+              setSalvando(true);
+              try {
+                const res = await fetch("/api/lotes", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    loteria: loteria.id,
+                    estrategia: "manual",
+                    jogos: [{ dezenas: dezenas.sort((a, b) => a - b), score: analise?.score || null }],
+                  }),
+                });
+                if (res.ok) {
+                  setSalvo(true);
+                  setTimeout(() => setSalvo(false), 2000);
+                }
+              } catch (e) {
+                console.error("Erro ao salvar:", e);
+              } finally {
+                setSalvando(false);
+              }
+            }}
+            disabled={dezenas.length < loteria.qtd_dezenas_min || salvando}
+            variant={salvo ? "default" : "outline"}
+            className="h-12 text-base font-semibold gap-2"
+          >
+            {salvando ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : salvo ? (
+              <CheckCircle2 className="h-5 w-5" />
+            ) : (
+              <Save className="h-5 w-5" />
+            )}
+            {salvo ? "Salvo!" : "Salvar"}
+          </Button>
+        </div>
 
         {/* Results */}
         {analise && (
