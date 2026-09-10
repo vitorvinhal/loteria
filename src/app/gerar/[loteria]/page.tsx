@@ -447,10 +447,20 @@ export default function GerarPage() {
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-1 shrink-0">
-                        <Button variant="ghost" size="icon-sm" title="Análise">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Análise"
+                          onClick={() => router.push(`/analise?loteria=${slug}&dezenas=${jogo.dezenas.join(",")}`)}
+                        >
                           <BarChart3 className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="icon-sm" title="Comparar">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Comparar"
+                          onClick={() => router.push(`/comparar?loteria=${slug}&dezenas=${jogo.dezenas.join(",")}`)}
+                        >
                           <GitCompareArrows className="h-3.5 w-3.5" />
                         </Button>
                         <Button

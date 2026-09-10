@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLoteriaPorSlug } from "@/lib/loterias";
 import { getEstrategiaPorSlug } from "@/modules/strategies";
-import { funcoesEstrategias } from "@/modules/strategies/implementations";
 import { calcularScore } from "@/modules/scoring";
 import { getSupabase } from "@/lib/db";
 import { getUser } from "@/lib/supabase/auth/server";
@@ -42,9 +41,7 @@ async function buscarEstatisticasReais(loteria: Loteria): Promise<Estatisticas> 
 
     const frequencia = new Map<number, number>();
     const atraso = new Map<number, number>();
-    const universo: number[] = [];
     for (let i = loteria.universo_min; i <= loteria.universo_max; i++) {
-      universo.push(i);
       atraso.set(i, concursos.length);
     }
 
@@ -84,7 +81,7 @@ async function buscarEstatisticasReais(loteria: Loteria): Promise<Estatisticas> 
       faixa_frequente: [somaMin, somaMax],
     };
   } catch (e) {
-    console.error("[GERAÇÃO] Erro ao buscar estatísticas reais:", e);
+    console.error("[GERAÇÃO] Erro ao buscar estatísticas:", e);
   }
   return stats;
 }
@@ -129,14 +126,6 @@ export async function POST(
 
     const slugEstrategia = estrategias[0];
     const estrategiaConfig = getEstrategiaPorSlug(slugEstrategia);
-    if (!estrategiaConfig) {
-      return NextResponse.json({ error: "Estratégia não encontrada" }, { status: 404 });
-    }
-
-    const funcao = funcoesEstrategias[slugEstrategia];
-    if (!funcao) {
-      return NextResponse.json({ error: "Estratégia não implementada" }, { status: 500 });
-    }
 
     const estatisticas = await buscarEstatisticasReais(loteria);
 
@@ -157,15 +146,25 @@ export async function POST(
       let dezenas: number[];
       let indicadores: Record<string, number> = {};
 
-      try {
-        const resultado = funcao(loteria, estatisticas, estrategiaConfig.parametros_padrao);
-        if (temDezenasValidas(resultado.dezenas, loteria)) {
-          dezenas = resultado.dezenas;
-          indicadores = resultado.indicadores || {};
-        } else {
+      if (estrategiaConfig) {
+        try {
+          const { funcoesEstrategias } = await import("@/modules/strategies/implementations");
+          const funcao = funcoesEstrategias[slugEstrategia];
+          if (funcao) {
+            const resultado = funcao(loteria, estatisticas, estrategiaConfig.parametros_padrao);
+            if (temDezenasValidas(resultado.dezenas, loteria)) {
+              dezenas = resultado.dezenas;
+              indicadores = resultado.indicadores || {};
+            } else {
+              dezenas = gerarAleatorio(loteria, loteria.qtd_dezenas_padrao);
+            }
+          } else {
+            dezenas = gerarAleatorio(loteria, loteria.qtd_dezenas_padrao);
+          }
+        } catch {
           dezenas = gerarAleatorio(loteria, loteria.qtd_dezenas_padrao);
         }
-      } catch {
+      } else {
         dezenas = gerarAleatorio(loteria, loteria.qtd_dezenas_padrao);
       }
 
@@ -193,7 +192,7 @@ export async function POST(
         .insert({
           usuario_id: usuarioId,
           loteria_id: loteria.id,
-          estrategia_id: estrategiaConfig.id,
+          estrategia_id: estrategiaConfig?.id || null,
           score_minimo: score_minimo,
           quantidade_solicitada: quantidade,
           quantidade_gerada: jogos.length,
@@ -210,7 +209,7 @@ export async function POST(
           usuario_id: usuarioId,
           loteria_id: loteria.id,
           dezenas: j.dezenas,
-          estrategia_id: estrategiaConfig.id,
+          estrategia_id: estrategiaConfig?.id || null,
           score: j.score,
           score_breakdown: j.breakdown,
           origem: 'algoritmo' as const,

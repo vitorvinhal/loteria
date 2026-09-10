@@ -34,6 +34,15 @@ export default function CriarJogoPage() {
   const [dezenas, setDezenas] = useState<number[]>([]);
   const [analise, setAnalise] = useState<Analise | null>(null);
 
+  const todosNumeros = useMemo(() => {
+    if (!loteria) return [];
+    const nums: number[] = [];
+    for (let i = loteria.universo_min; i <= loteria.universo_max; i++) {
+      nums.push(i);
+    }
+    return nums;
+  }, [loteria]);
+
   if (!loteria) {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
@@ -44,14 +53,6 @@ export default function CriarJogoPage() {
       </div>
     );
   }
-
-  const todosNumeros = useMemo(() => {
-    const nums: number[] = [];
-    for (let i = loteria.universo_min; i <= loteria.universo_max; i++) {
-      nums.push(i);
-    }
-    return nums;
-  }, [loteria.universo_min, loteria.universo_max]);
 
   const toggleDezena = (num: number) => {
     setAnalise(null);

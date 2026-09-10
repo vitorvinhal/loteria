@@ -30,6 +30,39 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "2.1.0",
+    date: "2026-09-09",
+    type: "minor",
+    tag: "UX Polish",
+    sections: [
+      {
+        title: "Melhorias de Visualização",
+        icon: <Palette className="w-5 h-5" />,
+        color: "text-purple-500",
+        items: [
+          "Grid de números com botões circulares e bordas visíveis",
+          "Container com fundo delimitado para o grid de seleção",
+          "Estados de seleção com anel (ring) e sombra destacada",
+          "Dropdowns de loteria com opções maiores e z-50 para sobreposição",
+          "Espaçamento generoso entre seções nos formulários",
+          "Botões de ação com largura total e altura aumentada",
+          "Badges de dezenas selecionadas com fundo sutil destacado",
+          "Separadores visuais entre seções de configuração",
+        ],
+      },
+      {
+        title: "Páginas Atualizadas",
+        icon: <Layout className="w-5 h-5" />,
+        color: "text-blue-500",
+        items: [
+          "Análise — grid com circulos, dropdown renovado, spacing generoso",
+          "Comparar — grid circular, z-50 nos dropdowns, container delimitado",
+          "Apostas — grid circular, input de valor com h-11, botão largura total",
+        ],
+      },
+    ],
+  },
+  {
     version: "2.0.0",
     date: "2026-09-09",
     type: "major",

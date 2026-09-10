@@ -169,17 +169,18 @@ export default function AnalisePage() {
           <CardTitle>Configurar Análise</CardTitle>
           <CardDescription>Selecione a loteria e escolha as dezenas</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-6">
           <div className="space-y-2">
             <Label>Loteria</Label>
             <Select value={loteriaSlug} onValueChange={handleLoteriaChange}>
-              <SelectTrigger>
+              <SelectTrigger className="h-11">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="z-50">
                 {LOTERIAS.map(l => (
-                  <SelectItem key={l.slug} value={l.slug}>
-                    {l.nome} ({l.universo_min}-{l.universo_max})
+                  <SelectItem key={l.slug} value={l.slug} className="py-2.5">
+                    <span className="font-medium">{l.nome}</span>
+                    <span className="ml-2 text-xs text-muted-foreground">({l.universo_min}–{l.universo_max})</span>
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -198,27 +199,27 @@ export default function AnalisePage() {
                 value={jogoSalvoSelecionado}
                 onValueChange={(v) => v && setJogoSalvoSelecionado(v)}
               >
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Selecione um jogo salvo ou digite manualmente" />
+                <SelectTrigger className="flex-1 h-11">
+                  <SelectValue placeholder="Selecione um jogo salvo ou escolha manualmente" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="manual">Digitar manualmente</SelectItem>
+                <SelectContent className="z-50">
+                  <SelectItem value="manual" className="py-2.5">Escolher manualmente</SelectItem>
                   {carregandoJogos ? (
-                    <SelectItem value="loading" disabled>
+                    <SelectItem value="loading" disabled className="py-2.5">
                       <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
                       Carregando...
                     </SelectItem>
                   ) : jogosDaLoteria.length === 0 ? (
-                    <SelectItem value="empty" disabled>
+                    <SelectItem value="empty" disabled className="py-2.5">
                       Nenhum jogo salvo para esta loteria
                     </SelectItem>
                   ) : (
                     jogosDaLoteria
                       .sort((a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime())
                       .map(j => (
-                        <SelectItem key={j.id} value={j.id}>
+                        <SelectItem key={j.id} value={j.id} className="py-2.5">
                           {j.dezenas.map(d => String(d).padStart(2, "0")).join(" - ")}
-                          {j.score !== null && ` | Score: ${j.score}`}
+                          {j.score !== null && <span className="ml-2 text-muted-foreground">Score: {j.score}</span>}
                         </SelectItem>
                       ))
                   )}
@@ -244,6 +245,8 @@ export default function AnalisePage() {
             )}
           </div>
 
+          <Separator />
+
           <div className="space-y-3">
             <Label className="flex items-center justify-between">
               <span className="flex items-center gap-2">
@@ -257,7 +260,7 @@ export default function AnalisePage() {
             </Label>
 
             {dezenasSelecionadas.length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-muted/30">
                 {dezenasSelecionadas.sort((a, b) => a - b).map(d => (
                   <Badge
                     key={d}
@@ -273,31 +276,33 @@ export default function AnalisePage() {
             )}
 
             {loteria && (
-              <div className="grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
-                {Array.from(
-                  { length: loteria.universo_max - loteria.universo_min + 1 },
-                  (_, i) => loteria.universo_min + i
-                ).map(numero => {
-                  const isSelected = dezenasSelecionadas.includes(numero);
-                  const atLimit = !isSelected && loteria && dezenasSelecionadas.length >= loteria.qtd_dezenas_padrao;
-                  return (
-                    <button
-                      key={numero}
-                      type="button"
-                      disabled={atLimit}
-                      onClick={() => toggleDezena(numero)}
-                      className={`h-9 rounded-lg text-sm font-bold tabular-nums transition-all duration-150 cursor-pointer
-                        ${isSelected
-                          ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 scale-105"
-                          : atLimit
-                            ? "bg-muted/50 text-muted-foreground/40 cursor-not-allowed"
-                            : "bg-muted/70 text-foreground hover:bg-primary/15 hover:text-primary hover:scale-105"
-                        }`}
-                    >
-                      {String(numero).padStart(2, "0")}
-                    </button>
-                  );
-                })}
+              <div className="p-3 rounded-xl border border-muted bg-card/50">
+                <div className="grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
+                  {Array.from(
+                    { length: loteria.universo_max - loteria.universo_min + 1 },
+                    (_, i) => loteria.universo_min + i
+                  ).map(numero => {
+                    const isSelected = dezenasSelecionadas.includes(numero);
+                    const atLimit = !isSelected && loteria && dezenasSelecionadas.length >= loteria.qtd_dezenas_padrao;
+                    return (
+                      <button
+                        key={numero}
+                        type="button"
+                        disabled={atLimit}
+                        onClick={() => toggleDezena(numero)}
+                        className={`aspect-square rounded-full text-sm font-bold tabular-nums transition-all duration-150 cursor-pointer flex items-center justify-center
+                          ${isSelected
+                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-110 ring-2 ring-primary/40"
+                            : atLimit
+                              ? "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
+                              : "bg-muted text-foreground hover:bg-primary/15 hover:text-primary hover:scale-110 hover:shadow-md border border-border/50"
+                          }`}
+                      >
+                        {String(numero).padStart(2, "0")}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
@@ -306,7 +311,7 @@ export default function AnalisePage() {
             </p>
           </div>
 
-          <Button onClick={handleAnalisar} disabled={isAnalyzing}>
+          <Button onClick={handleAnalisar} disabled={isAnalyzing} className="w-full h-11">
             {isAnalyzing ? (
               <>
                 <Zap className="h-4 w-4 mr-2 animate-spin" />

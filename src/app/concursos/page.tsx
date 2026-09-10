@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import {
   Table,
   TableBody,
@@ -210,7 +210,7 @@ export default function ConcursosPage() {
                 ) : concursos.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
-                      Nenhum concurso encontrado. Clique em "Baixar Próximos 100" para popular.
+                      Nenhum concurso encontrado. Clique em &quot;Baixar Próximos 100&quot; para popular.
                     </TableCell>
                   </TableRow>
                 ) : (
