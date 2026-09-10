@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, LogIn, LogOut, User, LayoutDashboard, Settings } from "lucide-react";
+import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, LogIn, LogOut, User, LayoutDashboard, Settings, Bell, RefreshCw, PieChart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/supabase/auth/provider";
@@ -15,6 +15,8 @@ const navItems = [
   { href: "/criar-jogo/megasena", label: "Criar Jogo", icon: PenTool },
   { href: "/bolao", label: "Bolão", icon: Users },
   { href: "/estrategias", label: "Estratégias", icon: BookOpen },
+  { href: "/sincronizar", label: "Sincronizar", icon: RefreshCw },
+  { href: "/estatisticas", label: "Estatísticas", icon: PieChart },
 ];
 
 export function Navbar() {
@@ -49,6 +51,12 @@ export function Navbar() {
             <>
               {user ? (
                 <div className="hidden md:flex items-center gap-2">
+                  <Link href="/notificacoes">
+                    <Button variant="ghost" size="sm">
+                      <Bell className="h-4 w-4 mr-1" />
+                      Notificações
+                    </Button>
+                  </Link>
                   <Link href="/dashboard">
                     <Button variant="ghost" size="sm">
                       <LayoutDashboard className="h-4 w-4 mr-1" />
@@ -110,6 +118,14 @@ export function Navbar() {
                       <>
                         {user ? (
                           <div className="space-y-2">
+                            <Link
+                              href="/notificacoes"
+                              onClick={() => setOpen(false)}
+                              className="flex items-center space-x-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                            >
+                              <Bell className="h-5 w-5" />
+                              <span>Notificações</span>
+                            </Link>
                             <Link
                               href="/dashboard"
                               onClick={() => setOpen(false)}
