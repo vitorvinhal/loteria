@@ -14,6 +14,14 @@ export const metadata: Metadata = {
   description:
     "Sistema completo para geração, análise e comparação de jogos das loterias da CAIXA",
   keywords: ["loterias", "caixa", "megasena", "lotofacil", "quina", "gerador de jogos"],
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+  },
   openGraph: {
     title: "Loterias CAIXA - Gerador de Jogos Inteligente",
     description:
@@ -39,6 +47,7 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" suppressHydrationWarning>
       <head>
+        <link rel="manifest" href="/manifest.json" />
         <script
           dangerouslySetInnerHTML={{
             __html: `

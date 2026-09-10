@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart3, Target, TrendingUp, Hash, Zap, ArrowRight } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import { BarChart3, Target, TrendingUp, Hash, Zap, History, Loader2 } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
 
 interface AnaliseResult {
@@ -33,13 +35,84 @@ interface AnaliseResult {
   };
 }
 
+interface JogoSalvo {
+  id: string;
+  loteria: string;
+  dezenas: number[];
+  score: number | null;
+  criado_em: string;
+  estrategia: string;
+}
+
 export default function AnalisePage() {
+  const searchParams = useSearchParams();
   const [loteriaSlug, setLoteriaSlug] = useState("megasena");
   const [dezenasInput, setDezenasInput] = useState("");
   const [analise, setAnalise] = useState<AnaliseResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [jogosSalvos, setJogosSalvos] = useState<JogoSalvo[]>([]);
+  const [jogoSalvoSelecionado, setJogoSalvoSelecionado] = useState<string>("manual");
+  const [carregandoJogos, setCarregandoJogos] = useState(false);
 
   const loteria = LOTERIAS.find(l => l.slug === loteriaSlug);
+
+  // Auto-fill from URL params
+  useEffect(() => {
+    const loteriaParam = searchParams.get("loteria");
+    const dezenasParam = searchParams.get("dezenas");
+    if (loteriaParam) setLoteriaSlug(loteriaParam);
+    if (dezenasParam) setDezenasInput(dezenasParam);
+  }, [searchParams]);
+
+  // Fetch saved games when loteria changes
+  useEffect(() => {
+    const fetchSalvos = async () => {
+      setCarregandoJogos(true);
+      try {
+        const response = await fetch("/api/lotes");
+        if (response.ok) {
+          const data = await response.json();
+          const todos: JogoSalvo[] = [];
+          for (const lote of data.lotes || []) {
+            for (const jogo of lote.jogos || []) {
+              todos.push({
+                id: jogo.id,
+                loteria: lote.loteria,
+                dezenas: jogo.dezenas,
+                score: jogo.score,
+                criado_em: jogo.criado_em,
+                estrategia: lote.estrategia,
+              });
+            }
+          }
+          setJogosSalvos(todos);
+        }
+      } catch (error) {
+        console.error("Erro ao carregar jogos salvos:", error);
+      } finally {
+        setCarregandoJogos(false);
+      }
+    };
+    fetchSalvos();
+  }, []);
+
+  const jogosDaLoteria = jogosSalvos.filter(j => j.loteria === loteriaSlug);
+
+  const jogoSelecionado = jogosSalvos.find(j => j.id === jogoSalvoSelecionado);
+
+  useEffect(() => {
+    if (jogoSelecionado && jogoSelecionado.loteria === loteriaSlug) {
+      setDezenasInput(jogoSelecionado.dezenas.join(" "));
+    }
+  }, [jogoSalvoSelecionado, jogosSalvos, loteriaSlug]);
+
+  const handleLoteriaChange = (slug: string | null) => {
+    if (slug) {
+      setLoteriaSlug(slug);
+      setJogoSalvoSelecionado("manual");
+      setDezenasInput("");
+    }
+  };
 
   const handleAnalisar = async () => {
     if (!loteria) return;
@@ -87,12 +160,12 @@ export default function AnalisePage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Configurar Análise</CardTitle>
-          <CardDescription>Selecione a loteria e digite as dezenas</CardDescription>
+          <CardDescription>Selecione a loteria e escolha as dezenas</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label>Loteria</Label>
-            <Select value={loteriaSlug} onValueChange={(v) => v && setLoteriaSlug(v)}>
+            <Select value={loteriaSlug} onValueChange={handleLoteriaChange}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -106,13 +179,74 @@ export default function AnalisePage() {
             </Select>
           </div>
 
+          <Separator />
+
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <History className="h-4 w-4" />
+              Jogos Salvos
+            </Label>
+            <div className="flex items-center gap-2">
+              <Select
+                value={jogoSalvoSelecionado}
+                onValueChange={(v) => v && setJogoSalvoSelecionado(v)}
+              >
+                <SelectTrigger className="flex-1">
+                  <SelectValue placeholder="Selecione um jogo salvo ou digite manualmente" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Digitar manualmente</SelectItem>
+                  {carregandoJogos ? (
+                    <SelectItem value="loading" disabled>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
+                      Carregando...
+                    </SelectItem>
+                  ) : jogosDaLoteria.length === 0 ? (
+                    <SelectItem value="empty" disabled>
+                      Nenhum jogo salvo para esta loteria
+                    </SelectItem>
+                  ) : (
+                    jogosDaLoteria
+                      .sort((a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime())
+                      .map(j => (
+                        <SelectItem key={j.id} value={j.id}>
+                          {j.dezenas.map(d => String(d).padStart(2, "0")).join(" - ")}
+                          {j.score !== null && ` | Score: ${j.score}`}
+                        </SelectItem>
+                      ))
+                  )}
+                </SelectContent>
+              </Select>
+              {jogoSelecionado && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setJogoSalvoSelecionado("manual");
+                    setDezenasInput("");
+                  }}
+                >
+                  Limpar
+                </Button>
+              )}
+            </div>
+            {jogoSelecionado && (
+              <p className="text-xs text-muted-foreground">
+                Criado em {new Date(jogoSelecionado.criado_em).toLocaleDateString("pt-BR")} — {jogoSelecionado.estrategia}
+              </p>
+            )}
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="dezenas">Dezenas</Label>
             <Input
               id="dezenas"
               placeholder={loteria ? `Ex: ${Array.from({length: loteria.qtd_dezenas_padrao}, (_, i) => i + loteria.universo_min).slice(0, 3).join(' ')}` : "Digite as dezenas"}
               value={dezenasInput}
-              onChange={e => setDezenasInput(e.target.value)}
+              onChange={e => {
+                setDezenasInput(e.target.value);
+                setJogoSalvoSelecionado("manual");
+              }}
             />
             <p className="text-xs text-muted-foreground">
               {loteria && `Mínimo ${loteria.qtd_dezenas_min} dezenas (1-${loteria.universo_max})`}

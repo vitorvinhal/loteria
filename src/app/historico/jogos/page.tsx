@@ -1,12 +1,22 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { History, Download, RefreshCw, Filter, ArrowUpDown } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+  SheetFooter,
+} from "@/components/ui/sheet";
+import { History, Download, RefreshCw, Filter, ArrowUpDown, Trash2, Target, GitCompareArrows, Share2 } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
 
 interface JogoHistorico {
@@ -22,11 +32,14 @@ type SortField = "data" | "score" | "loteria";
 type SortOrder = "asc" | "desc";
 
 export default function HistoricoJogosPage() {
+  const router = useRouter();
   const [loteriaFiltro, setLoteriaFiltro] = useState("todas");
   const [jogos, setJogos] = useState<JogoHistorico[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sortField, setSortField] = useState<SortField>("data");
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [jogoDetalhe, setJogoDetalhe] = useState<JogoHistorico | null>(null);
 
   const fetchJogos = async () => {
     setIsLoading(true);
@@ -89,6 +102,26 @@ export default function HistoricoJogosPage() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === jogosOrdenados.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(jogosOrdenados.map(j => j.id)));
+    }
+  };
+
   const exportarCSV = () => {
     const headers = ["Loteria", "Dezenas", "Score", "Estratégia", "Data"];
     const rows = jogosOrdenados.map(j => [
@@ -109,7 +142,42 @@ export default function HistoricoJogosPage() {
     URL.revokeObjectURL(url);
   };
 
+  const compararSelecionados = () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length >= 2) {
+      router.push(`/comparar?ids=${ids.join(",")}`);
+    }
+  };
+
+  const excluirJogo = async (id: string) => {
+    if (!confirm("Tem certeza que deseja excluir este jogo?")) return;
+    try {
+      const response = await fetch(`/api/lotes/${id}`, { method: "DELETE" });
+      if (response.ok) {
+        setJogos(prev => prev.filter(j => j.id !== id));
+        setJogoDetalhe(null);
+        setSelectedIds(prev => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }
+    } catch (error) {
+      console.error("Erro ao excluir:", error);
+    }
+  };
+
+  const compartilharJogo = (jogo: JogoHistorico) => {
+    const texto = `Meu jogo ${jogo.loteria}: ${jogo.dezenas.map(d => String(d).padStart(2, "0")).join(" - ")} | Score: ${jogo.score || "-"}`;
+    if (navigator.share) {
+      navigator.share({ title: "Meu Jogo Loterias", text: texto });
+    } else {
+      navigator.clipboard.writeText(texto);
+    }
+  };
+
   const loteriasUnicas = [...new Set(jogos.map(j => j.loteria))];
+  const allSelected = selectedIds.size === jogosOrdenados.length && jogosOrdenados.length > 0;
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -145,7 +213,20 @@ export default function HistoricoJogosPage() {
           <Download className="h-4 w-4" />
           Exportar CSV
         </Button>
+
+        {selectedIds.size >= 2 && (
+          <Button className="gap-2" onClick={compararSelecionados}>
+            <GitCompareArrows className="h-4 w-4" />
+            Comparar Selecionados ({selectedIds.size})
+          </Button>
+        )}
       </div>
+
+      {selectedIds.size > 0 && selectedIds.size < 2 && (
+        <p className="text-sm text-muted-foreground mb-4">
+          Selecione pelo menos 2 jogos para comparar.
+        </p>
+      )}
 
       <Card>
         <CardHeader>
@@ -206,6 +287,27 @@ export default function HistoricoJogosPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <button
+                      onClick={toggleSelectAll}
+                      className={`h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
+                        allSelected
+                          ? "bg-primary border-primary"
+                          : selectedIds.size > 0
+                            ? "bg-primary/50 border-primary"
+                            : "border-muted-foreground/50"
+                      }`}
+                    >
+                      {allSelected && (
+                        <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M2 6l3 3 5-5" />
+                        </svg>
+                      )}
+                      {selectedIds.size > 0 && !allSelected && (
+                        <div className="h-1.5 w-1.5 bg-primary-foreground rounded-sm" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead>Loteria</TableHead>
                   <TableHead>Dezenas</TableHead>
                   <TableHead>Score</TableHead>
@@ -215,7 +317,27 @@ export default function HistoricoJogosPage() {
               </TableHeader>
               <TableBody>
                 {jogosOrdenados.map(jogo => (
-                  <TableRow key={jogo.id}>
+                  <TableRow
+                    key={jogo.id}
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => setJogoDetalhe(jogo)}
+                  >
+                    <TableCell onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={() => toggleSelect(jogo.id)}
+                        className={`h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
+                          selectedIds.has(jogo.id)
+                            ? "bg-primary border-primary"
+                            : "border-muted-foreground/50"
+                        }`}
+                      >
+                        {selectedIds.has(jogo.id) && (
+                          <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M2 6l3 3 5-5" />
+                          </svg>
+                        )}
+                      </button>
+                    </TableCell>
                     <TableCell className="font-medium">
                       <Badge variant="outline">{jogo.loteria}</Badge>
                     </TableCell>
@@ -249,6 +371,102 @@ export default function HistoricoJogosPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Detalhes do Jogo - Sheet */}
+      <Sheet open={!!jogoDetalhe} onOpenChange={(open) => !open && setJogoDetalhe(null)}>
+        <SheetContent side="right" className="w-full sm:max-w-md">
+          {jogoDetalhe && (
+            <>
+              <SheetHeader>
+                <SheetTitle>Detalhes do Jogo</SheetTitle>
+                <SheetDescription>
+                  {new Date(jogoDetalhe.criado_em).toLocaleString("pt-BR")}
+                </SheetDescription>
+              </SheetHeader>
+
+              <div className="flex-1 overflow-y-auto px-4 space-y-6">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Loteria</p>
+                  <Badge variant="outline" className="text-base">{jogoDetalhe.loteria}</Badge>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Dezenas</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {jogoDetalhe.dezenas.map(d => (
+                      <Badge key={d} variant="secondary" className="text-base px-3 py-1">
+                        {String(d).padStart(2, "0")}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Score</p>
+                  <Badge
+                    variant={jogoDetalhe.score && jogoDetalhe.score >= 80 ? "default" : "secondary"}
+                    className="text-lg px-4 py-1"
+                  >
+                    {jogoDetalhe.score || "-"}
+                  </Badge>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Estratégia</p>
+                  <p className="capitalize">{jogoDetalhe.estrategia}</p>
+                </div>
+
+                <Separator />
+
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-2">Data de Criação</p>
+                  <p>{new Date(jogoDetalhe.criado_em).toLocaleString("pt-BR")}</p>
+                </div>
+              </div>
+
+              <SheetFooter className="flex-row gap-2 pt-4">
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  onClick={() => {
+                    setJogoDetalhe(null);
+                    router.push(`/analise?loteria=${jogoDetalhe.loteria}&dezenas=${jogoDetalhe.dezenas.join(",")}`);
+                  }}
+                >
+                  <Target className="h-4 w-4" />
+                  Analisar
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  onClick={() => {
+                    setJogoDetalhe(null);
+                    router.push(`/comparar?ids=${jogoDetalhe.id}`);
+                  }}
+                >
+                  <GitCompareArrows className="h-4 w-4" />
+                  Comparar
+                </Button>
+                <Button
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  onClick={() => compartilharJogo(jogoDetalhe)}
+                >
+                  <Share2 className="h-4 w-4" />
+                  Compartilhar
+                </Button>
+                <Button
+                  variant="destructive"
+                  className="gap-2"
+                  onClick={() => excluirJogo(jogoDetalhe.id)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </SheetFooter>
+            </>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }

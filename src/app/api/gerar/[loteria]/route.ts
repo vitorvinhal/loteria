@@ -73,7 +73,7 @@ export async function POST(
     }> = [];
 
     let tentativas = 0;
-    const maxTentativas = 50000;
+    const maxTentativas = 1000;
     const timeout = 30000;
     const inicio = Date.now();
 
@@ -88,6 +88,9 @@ export async function POST(
           score: score.total,
           breakdown: score as unknown as Record<string, unknown>,
         });
+        console.log(
+          `[GERAÇÃO] Gerando jogo ${jogos.length}/${quantidade}... Score atual: ${score.total} (mínimo: ${score_minimo})`
+        );
       }
     }
 
