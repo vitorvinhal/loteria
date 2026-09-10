@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toast";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
+import { VersionBadge } from "@/components/layout/version-badge";
 import { AuthProvider } from "@/lib/supabase/auth/provider";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -72,6 +73,7 @@ export default function RootLayout({
               <Footer />
             </div>
             <Toaster />
+            <VersionBadge />
           </TooltipProvider>
         </AuthProvider>
       </body>
