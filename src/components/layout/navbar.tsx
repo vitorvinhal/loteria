@@ -1,0 +1,75 @@
+"use client";
+
+import Link from "next/link";
+import { useState } from "react";
+import { Menu, X, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+
+const navItems = [
+  { href: "/gerar/megasena", label: "Gerar Jogos", icon: Dices },
+  { href: "/historico/jogos", label: "Histórico", icon: History },
+  { href: "/analise", label: "Análise", icon: BarChart3 },
+  { href: "/comparar", label: "Comparar", icon: GitCompare },
+  { href: "/criar-jogo/megasena", label: "Criar Jogo", icon: PenTool },
+  { href: "/bolao", label: "Bolão", icon: Users },
+  { href: "/estrategias", label: "Estratégias", icon: BookOpen },
+];
+
+export function Navbar() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="container mx-auto flex h-14 items-center px-4">
+        <Link href="/" className="mr-6 flex items-center space-x-2">
+          <Dices className="h-6 w-6 text-primary" />
+          <span className="hidden font-bold sm:inline-block">
+            Loterias CAIXA
+          </span>
+        </Link>
+
+        <nav className="hidden md:flex items-center space-x-1">
+          {navItems.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex items-center space-x-1 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+            >
+              <item.icon className="h-4 w-4" />
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+
+        <div className="flex items-center ml-auto md:hidden">
+          <Sheet open={open} onOpenChange={setOpen}>
+            <SheetTrigger
+              render={
+                <Button variant="ghost" size="icon">
+                  <Menu className="h-5 w-5" />
+                  <span className="sr-only">Abrir menu</span>
+                </Button>
+              }
+            />
+            <SheetContent side="left">
+              <div className="flex flex-col space-y-4 mt-8">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className="flex items-center space-x-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                  >
+                    <item.icon className="h-5 w-5" />
+                    <span>{item.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
+    </header>
+  );
+}
