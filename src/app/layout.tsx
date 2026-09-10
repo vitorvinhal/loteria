@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/toast";
 import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
+import { AuthProvider } from "@/lib/supabase/auth/provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -22,14 +23,16 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className={inter.className}>
-        <TooltipProvider>
-          <div className="flex min-h-screen flex-col">
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
-          </div>
-          <Toaster />
-        </TooltipProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <div className="flex min-h-screen flex-col">
+              <Navbar />
+              <main className="flex-1">{children}</main>
+              <Footer />
+            </div>
+            <Toaster />
+          </TooltipProvider>
+        </AuthProvider>
       </body>
     </html>
   );

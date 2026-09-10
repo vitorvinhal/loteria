@@ -4,6 +4,7 @@ import { getEstrategiaPorSlug } from "@/modules/strategies";
 import { funcoesEstrategias } from "@/modules/strategies/implementations";
 import { calcularScore } from "@/modules/scoring";
 import { getSupabase } from "@/lib/db";
+import { getUser } from "@/lib/supabase/auth/server";
 import { Estatisticas } from "@/types";
 
 interface GerarRequest {
@@ -93,12 +94,14 @@ export async function POST(
     jogos.sort((a, b) => b.score - a.score);
 
     const tempoExecucao = Date.now() - inicio;
+    const user = await getUser();
+    const usuarioId = user?.id ?? null;
 
     // Salvar lote no banco
     const { data: lote, error: errorLote } = await getSupabase()
       .from('lotes_geracao')
       .insert({
-        usuario_id: null,
+        usuario_id: usuarioId,
         loteria_id: loteria.id,
         estrategia_id: estrategiaConfig.id,
         score_minimo: score_minimo,
@@ -118,7 +121,7 @@ export async function POST(
     if (lote) {
       const jogosParaSalvar = jogos.map(j => ({
         lote_id: lote.id,
-        usuario_id: null,
+        usuario_id: usuarioId,
         loteria_id: loteria.id,
         dezenas: j.dezenas,
         estrategia_id: estrategiaConfig.id,
