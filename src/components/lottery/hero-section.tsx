@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Dices,
   BarChart3,
+  GitCompare,
   Users,
   BookOpen,
   ArrowRight,
