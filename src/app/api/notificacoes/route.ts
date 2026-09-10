@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const session = await getSession();
     if (!session?.user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+      return NextResponse.json({ notificacoes: [] });
     }
 
     const supabase = getSupabase();
@@ -19,12 +19,12 @@ export async function GET() {
 
     if (error) {
       console.error("[API] Erro ao buscar notificações:", error);
-      return NextResponse.json({ error: "Erro ao buscar notificações" }, { status: 500 });
+      return NextResponse.json({ notificacoes: [] });
     }
 
     return NextResponse.json({ notificacoes: notificacoes || [] });
   } catch (error) {
     console.error("[API] Erro geral:", error);
-    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
+    return NextResponse.json({ notificacoes: [] });
   }
 }

@@ -215,7 +215,12 @@ export async function POST(
           origem: 'algoritmo' as const,
         }));
 
-        await getSupabase().from('jogos_gerados').insert(jogosParaSalvar);
+        const { error: jogosError } = await getSupabase().from('jogos_gerados').insert(jogosParaSalvar);
+        if (jogosError) {
+          console.error("[API] Erro ao salvar jogos (jogos_gerados):", jogosError);
+        }
+      } else if (errorLote) {
+        console.error("[API] Erro ao salvar lote (lotes_geracao):", errorLote.message);
       }
     } catch (e) {
       console.error("[API] Erro ao salvar:", e);

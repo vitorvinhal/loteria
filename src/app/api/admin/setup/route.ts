@@ -1,29 +1,40 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/db";
 
+export async function GET() {
+  try {
+    const supabase = getSupabase();
+
+    const { count: strategiesCount } = await supabase
+      .from("estrategias")
+      .select("id", { count: "exact", head: true });
+
+    const { count: concursosCount } = await supabase
+      .from("concursos")
+      .select("id", { count: "exact", head: true });
+
+    const { count: lotesCount } = await supabase
+      .from("lotes_geracao")
+      .select("id", { count: "exact", head: true });
+
+    return NextResponse.json({
+      ok: true,
+      strategies: strategiesCount || 0,
+      concursos: concursosCount || 0,
+      lotes: lotesCount || 0,
+    });
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function POST() {
   try {
     const supabase = getSupabase();
     const results: string[] = [];
 
-    // 1. Tornar estrategia_id nullable
-    try {
-      await supabase.rpc("exec_sql", { sql: "ALTER TABLE lotes_geracao ALTER COLUMN estrategia_id DROP NOT NULL" });
-      results.push("lotes_geracao.estrategia_id OK");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      results.push(`lotes_geracao: ${msg}`);
-    }
-
-    try {
-      await supabase.rpc("exec_sql", { sql: "ALTER TABLE jogos_gerados ALTER COLUMN estrategia_id DROP NOT NULL" });
-      results.push("jogos_gerados.estrategia_id OK");
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      results.push(`jogos_gerados: ${msg}`);
-    }
-
-    // 2. Inserir estratégias seed
+    // 1. Seed strategies
     const estrategias = [
       { id: "est_quentes", slug: "quentes", nome: "Números Quentes", descricao_curta: "Números mais frequentes", descricao_completa: "Seleciona os números com maior frequência nos últimos concursos.", categoria: "frequencia", parametros_padrao: { janela: 20 } },
       { id: "est_frias", slug: "frias", nome: "Números Frios", descricao_curta: "Números mais atrasados", descricao_completa: "Seleciona os números que mais demoraram a sair.", categoria: "atraso", parametros_padrao: { janela: 20 } },
@@ -41,7 +52,7 @@ export async function POST() {
 
     for (const e of estrategias) {
       try {
-        await supabase.from("estrategias").upsert({
+        const { error } = await supabase.from("estrategias").upsert({
           id: e.id,
           slug: e.slug,
           nome: e.nome,
@@ -51,14 +62,42 @@ export async function POST() {
           parametros_padrao: e.parametros_padrao,
           ativo: true,
         }, { onConflict: "slug" });
-        results.push(`Estratégia ${e.slug} OK`);
+
+        if (error) {
+          results.push(`Estratégia ${e.slug}: ${error.message}`);
+        } else {
+          results.push(`Estratégia ${e.slug} OK`);
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         results.push(`Estratégia ${e.slug}: ${msg}`);
       }
     }
 
-    return NextResponse.json({ ok: true, results });
+    // 2. Try to make estrategia_id nullable via RPC
+    try {
+      const { error } = await supabase.rpc("exec_sql", {
+        sql: "ALTER TABLE lotes_geracao ALTER COLUMN estrategia_id DROP NOT NULL; ALTER TABLE jogos_gerados ALTER COLUMN estrategia_id DROP NOT NULL;"
+      });
+      if (error) {
+        results.push(`RPC exec_sql: ${error.message} (Execute manualmente no Supabase SQL Editor)`);
+      } else {
+        results.push("Colunas estrategia_id alteradas para nullable OK");
+      }
+    } catch {
+      results.push("RPC exec_sql não disponível (Execute manualmente no Supabase SQL Editor)");
+    }
+
+    // 3. Check current state
+    const { count: strategiesCount } = await supabase
+      .from("estrategias")
+      .select("id", { count: "exact", head: true });
+
+    return NextResponse.json({
+      ok: true,
+      results,
+      totalEstrategias: strategiesCount || 0,
+    });
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: msg }, { status: 500 });

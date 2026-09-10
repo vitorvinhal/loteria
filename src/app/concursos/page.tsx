@@ -67,22 +67,29 @@ export default function ConcursosPage() {
     fetchConcursos();
   }, [fetchConcursos]);
 
+  // Auto-sync first batch on first visit if no concursos
+  useEffect(() => {
+    if (!loading && concursos.length === 0 && !syncing) {
+      handleSyncBatch();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading]);
+
   const handleSyncBatch = async () => {
     if (!loteria) return;
     setSyncing(true);
     setSyncProgress({ atual: 0, total: 0, salvos: 0, erros: 0 });
 
     try {
-      const startRes = await fetch(`/api/concursos/${loteriaSlug}?page=1&limit=1`);
-      const startData = await startRes.json();
-      const ultimoConcurso = startData.concursos?.[0]?.numero_concurso || 0;
-
-      const targetConcurso = ultimoConcurso + 100;
+      // Find last concurso from current data or start from 1
+      const ultimoConcurso = concursos.length > 0 ? concursos[0].numero_concurso : 0;
+      const start = ultimoConcurso + 1;
+      const targetConcurso = Math.min(start + 49, ultimoConcurso + 100);
 
       const res = await fetch(`/api/sync/batch/${loteriaSlug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ start: ultimoConcurso + 1, end: targetConcurso }),
+        body: JSON.stringify({ start, end: targetConcurso }),
       });
 
       const data = await res.json();

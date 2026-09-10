@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { LOTERIAS } from "@/lib/loterias";
+import { getSupabase } from "@/lib/db";
 
 interface CaixaResultado {
   tipo: string;
@@ -51,11 +52,49 @@ async function fetchCaixaUltimoConcurso(slug: string): Promise<CaixaResultado | 
   }
 }
 
+async function fetchConcursoFromDB(slug: string) {
+  try {
+    const supabase = getSupabase();
+    const loteria = LOTERIAS.find(l => l.slug === slug);
+    if (!loteria) return null;
+
+    const { data } = await supabase
+      .from("concursos")
+      .select("*")
+      .eq("loteria_id", loteria.id)
+      .order("numero_concurso", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (!data) return null;
+
+    return {
+      slug,
+      nome: loteria.nome,
+      numero_concurso: data.numero_concurso,
+      dezenas_sorteadas: Array.isArray(data.dezenas_sorteadas) ? data.dezenas_sorteadas.map(Number) : [],
+      valor_acumulado: Number(data.valor_acumulado) || 0,
+      acumulou: Boolean(data.acumulou),
+      data_sorteio: data.data_sorteio || "",
+      proximo_concurso: data.valor_estimado_proximo ? {
+        numero: data.numero_concurso + 1,
+        data: data.data_proximo_concurso || "",
+        acumulado: Number(data.valor_estimado_proximo),
+      } : null,
+      premiacoes: Array.isArray(data.premiacoes) ? data.premiacoes : [],
+      fonte: "banco" as const,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   const loterias = LOTERIAS.filter((l) => l.ativo);
 
   const resultados = await Promise.allSettled(
     loterias.map(async (loteria) => {
+      // Try CAIXA API first
       const caixaData = await fetchCaixaUltimoConcurso(loteria.slug);
 
       if (caixaData?.concurso) {
@@ -73,6 +112,10 @@ export async function GET() {
           fonte: "caixa" as const,
         };
       }
+
+      // Fallback to DB
+      const dbResult = await fetchConcursoFromDB(loteria.slug);
+      if (dbResult) return dbResult;
 
       return {
         slug: loteria.slug,
