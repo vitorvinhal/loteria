@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, LogIn, LogOut, User } from "lucide-react";
+import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, LogIn, LogOut, User, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/supabase/auth/provider";
@@ -49,6 +49,12 @@ export function Navbar() {
             <>
               {user ? (
                 <div className="hidden md:flex items-center gap-2">
+                  <Link href="/dashboard">
+                    <Button variant="ghost" size="sm">
+                      <LayoutDashboard className="h-4 w-4 mr-1" />
+                      Painel
+                    </Button>
+                  </Link>
                   <span className="text-sm text-muted-foreground flex items-center gap-1">
                     <User className="h-4 w-4" />
                     {user.email?.split("@")[0]}
@@ -98,6 +104,14 @@ export function Navbar() {
                       <>
                         {user ? (
                           <div className="space-y-2">
+                            <Link
+                              href="/dashboard"
+                              onClick={() => setOpen(false)}
+                              className="flex items-center space-x-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                            >
+                              <LayoutDashboard className="h-5 w-5" />
+                              <span>Meu Painel</span>
+                            </Link>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground px-3">
                               <User className="h-4 w-4" />
                               {user.email}
