@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, LogIn, LogOut, User, LayoutDashboard } from "lucide-react";
+import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, LogIn, LogOut, User, LayoutDashboard, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/supabase/auth/provider";
@@ -53,6 +53,12 @@ export function Navbar() {
                     <Button variant="ghost" size="sm">
                       <LayoutDashboard className="h-4 w-4 mr-1" />
                       Painel
+                    </Button>
+                  </Link>
+                  <Link href="/configuracoes">
+                    <Button variant="ghost" size="sm">
+                      <Settings className="h-4 w-4 mr-1" />
+                      Config
                     </Button>
                   </Link>
                   <span className="text-sm text-muted-foreground flex items-center gap-1">
@@ -111,6 +117,14 @@ export function Navbar() {
                             >
                               <LayoutDashboard className="h-5 w-5" />
                               <span>Meu Painel</span>
+                            </Link>
+                            <Link
+                              href="/configuracoes"
+                              onClick={() => setOpen(false)}
+                              className="flex items-center space-x-3 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground"
+                            >
+                              <Settings className="h-5 w-5" />
+                              <span>Configurações</span>
                             </Link>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground px-3">
                               <User className="h-4 w-4" />
