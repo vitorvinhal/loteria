@@ -1,13 +1,26 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Loteria, Concurso, Estrategia, JogoGerado, LoteGeracao } from '@/types';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+let _supabase: SupabaseClient | null = null;
 
-export const supabase = createClient(supabaseUrl, supabaseKey);
+function getSupabase(): SupabaseClient {
+  if (!_supabase) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error('Supabase URL and Anon Key are required. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY environment variables.');
+    }
+
+    _supabase = createClient(supabaseUrl, supabaseKey);
+  }
+  return _supabase;
+}
+
+export { getSupabase };
 
 export async function getLoterias(): Promise<Loteria[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('loterias')
     .select('*')
     .eq('ativo', true)
@@ -18,7 +31,7 @@ export async function getLoterias(): Promise<Loteria[]> {
 }
 
 export async function getLoteriaPorId(id: string): Promise<Loteria | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('loterias')
     .select('*')
     .eq('id', id)
@@ -33,7 +46,7 @@ export async function getConcursosPorLoteria(
   limit = 50,
   offset = 0
 ): Promise<Concurso[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('concursos')
     .select('*')
     .eq('loteria_id', loteriaId)
@@ -45,7 +58,7 @@ export async function getConcursosPorLoteria(
 }
 
 export async function getUltimoConcurso(loteriaId: string): Promise<Concurso | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('concursos')
     .select('*')
     .eq('loteria_id', loteriaId)
@@ -58,7 +71,7 @@ export async function getUltimoConcurso(loteriaId: string): Promise<Concurso | n
 }
 
 export async function getEstrategias(): Promise<Estrategia[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('estrategias')
     .select('*')
     .eq('ativo', true)
@@ -69,7 +82,7 @@ export async function getEstrategias(): Promise<Estrategia[]> {
 }
 
 export async function salvarJogo(jogo: Omit<JogoGerado, 'id' | 'criado_em'>): Promise<JogoGerado> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('jogos_gerados')
     .insert(jogo)
     .select()
@@ -80,7 +93,7 @@ export async function salvarJogo(jogo: Omit<JogoGerado, 'id' | 'criado_em'>): Pr
 }
 
 export async function salvarLote(lote: Omit<LoteGeracao, 'id' | 'criado_em'>): Promise<LoteGeracao> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('lotes_geracao')
     .insert(lote)
     .select()
@@ -91,7 +104,7 @@ export async function salvarLote(lote: Omit<LoteGeracao, 'id' | 'criado_em'>): P
 }
 
 export async function getJogosPorLote(loteId: string): Promise<JogoGerado[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('jogos_gerados')
     .select('*')
     .eq('lote_id', loteId)
@@ -106,7 +119,7 @@ export async function getJogosPorLoteria(
   limit = 50,
   offset = 0
 ): Promise<JogoGerado[]> {
-  const { data, error } = await supabase
+  const { data, error } = await getSupabase()
     .from('jogos_gerados')
     .select('*')
     .eq('loteria_id', loteriaId)
@@ -121,7 +134,7 @@ export async function compararJogoComConcurso(
   jogoId: string,
   concursoId: string
 ): Promise<{ qtd_acertos: number; percentual: number }> {
-  const { data: jogo, error: errorJogo } = await supabase
+  const { data: jogo, error: errorJogo } = await getSupabase()
     .from('jogos_gerados')
     .select('dezenas')
     .eq('id', jogoId)
@@ -129,7 +142,7 @@ export async function compararJogoComConcurso(
 
   if (errorJogo) throw errorJogo;
 
-  const { data: concurso, error: errorConcurso } = await supabase
+  const { data: concurso, error: errorConcurso } = await getSupabase()
     .from('concursos')
     .select('dezenas_sorteadas')
     .eq('id', concursoId)

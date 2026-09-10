@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLoteriaPorSlug } from "@/lib/loterias";
-import { getEstrategiasAtivas, getEstrategiaPorSlug } from "@/modules/strategies";
+import { getEstrategiaPorSlug } from "@/modules/strategies";
 import { funcoesEstrategias } from "@/modules/strategies/implementations";
 import { calcularScore } from "@/modules/scoring";
-import { Loteria, Estatisticas } from "@/types";
+import { getSupabase } from "@/lib/db";
+import { Estatisticas } from "@/types";
 
 interface GerarRequest {
   estrategia: string;
@@ -91,12 +92,57 @@ export async function POST(
 
     jogos.sort((a, b) => b.score - a.score);
 
+    const tempoExecucao = Date.now() - inicio;
+
+    // Salvar lote no banco
+    const { data: lote, error: errorLote } = await getSupabase()
+      .from('lotes_geracao')
+      .insert({
+        usuario_id: null,
+        loteria_id: loteria.id,
+        estrategia_id: estrategiaConfig.id,
+        score_minimo: score_minimo,
+        quantidade_solicitada: quantidade,
+        quantidade_gerada: jogos.length,
+        tempo_execucao_ms: tempoExecucao,
+        score_relaxado: jogos.length < quantidade,
+      })
+      .select()
+      .single();
+
+    if (errorLote) {
+      console.error("[API] Erro ao salvar lote:", errorLote);
+    }
+
+    // Salvar jogos no banco
+    if (lote) {
+      const jogosParaSalvar = jogos.map(j => ({
+        lote_id: lote.id,
+        usuario_id: null,
+        loteria_id: loteria.id,
+        dezenas: j.dezenas,
+        estrategia_id: estrategiaConfig.id,
+        score: j.score,
+        score_breakdown: j.breakdown,
+        origem: 'algoritmo' as const,
+      }));
+
+      const { error: errorJogos } = await getSupabase()
+        .from('jogos_gerados')
+        .insert(jogosParaSalvar);
+
+      if (errorJogos) {
+        console.error("[API] Erro ao salvar jogos:", errorJogos);
+      }
+    }
+
     return NextResponse.json({
       jogos,
+      lote_id: lote?.id || null,
       total_gerados: jogos.length,
       total_solicitado: quantidade,
       score_minimo,
-      tempo_execucao_ms: Date.now() - inicio,
+      tempo_execucao_ms: tempoExecucao,
       tentativas,
       score_relaxado: jogos.length < quantidade,
     });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLoteriaPorSlug } from "@/lib/loterias";
-import { buscarResultado, sincronizarLoteria } from "@/modules/sync";
+import { buscarResultado } from "@/modules/sync";
+import { getSupabase } from "@/lib/db";
 
 export async function POST(
   request: NextRequest,
@@ -17,9 +18,47 @@ export async function POST(
       );
     }
 
-    const resultado = await sincronizarLoteria(loteria);
+    const { concurso, fonte } = await buscarResultado(loteria);
 
-    return NextResponse.json(resultado);
+    if (!concurso) {
+      return NextResponse.json(
+        { error: "Nenhum resultado encontrado" },
+        { status: 404 }
+      );
+    }
+
+    // Verificar se o concurso já existe
+    const { data: existente } = await getSupabase()
+      .from('concursos')
+      .select('id')
+      .eq('loteria_id', loteria.id)
+      .eq('numero_concurso', concurso.numero_concurso)
+      .single();
+
+    if (!existente) {
+      // Salvar novo concurso
+      const { error } = await getSupabase()
+        .from('concursos')
+        .insert({
+          loteria_id: loteria.id,
+          numero_concurso: concurso.numero_concurso,
+          data_sorteio: concurso.data_sorteio,
+          dezenas_sorteadas: concurso.dezenas_sorteadas,
+          acumulou: concurso.acumulou,
+          valor_acumulado: concurso.valor_acumulado,
+          valor_estimado_proximo: concurso.valor_estimado_proximo,
+          data_proximo_concurso: concurso.data_proximo_concurso,
+          local_sorteio: concurso.local_sorteio,
+          premiacoes: concurso.premiacoes,
+          raw_response: concurso.raw_response,
+        });
+
+      if (error) {
+        console.error("[API] Erro ao salvar concurso:", error);
+      }
+    }
+
+    return NextResponse.json({ concurso, fonte });
   } catch (error) {
     console.error("[API] Erro na sincronização:", error);
     return NextResponse.json(

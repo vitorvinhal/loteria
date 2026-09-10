@@ -9,13 +9,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Dices, ArrowLeft, Sparkles, Target, BarChart3 } from "lucide-react";
+import { Dices, ArrowLeft, Sparkles, Target, BarChart3, Save } from "lucide-react";
 import { getLoteriaPorSlug } from "@/lib/loterias";
 import { getEstrategiasAtivas } from "@/modules/strategies";
-import { calcularEstatisticas } from "@/modules/analytics";
-import { calcularScore } from "@/modules/scoring";
-import { funcoesEstrategias } from "@/modules/strategies/implementations";
+
+interface JogoGerado {
+  dezenas: number[];
+  score: number;
+  breakdown: Record<string, unknown>;
+}
 
 export default function GerarPage() {
   const params = useParams();
@@ -26,12 +28,9 @@ export default function GerarPage() {
   const [quantidade, setQuantidade] = useState(10);
   const [estrategiaSelecionada, setEstrategiaSelecionada] = useState(estrategias[0]?.slug || "");
   const [scoreMinimo, setScoreMinimo] = useState(60);
-  const [jogosGerados, setJogosGerados] = useState<Array<{
-    dezenas: number[];
-    score: number;
-    breakdown: Record<string, number>;
-  }>>([]);
+  const [jogosGerados, setJogosGerados] = useState<JogoGerado[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [loteId, setLoteId] = useState<string | null>(null);
 
   if (!loteria) {
     return (
@@ -47,43 +46,29 @@ export default function GerarPage() {
   const handleGerar = async () => {
     setIsGenerating(true);
 
-    await new Promise(resolve => setTimeout(resolve, 100));
-
-    const jogosNovos: Array<{
-      dezenas: number[];
-      score: number;
-      breakdown: Record<string, number>;
-    }> = [];
-
-    for (let i = 0; i < quantidade; i++) {
-      const funcao = funcoesEstrategias[estrategiaSelecionada];
-      if (!funcao) continue;
-
-      const statsVazias = {
-        frequencia: new Map<number, number>(),
-        frequencia_percentual: new Map<number, number>(),
-        atraso: new Map<number, number>(),
-        distribuicao_par_impar: [],
-        soma_concursos: { min: 0, max: 100, media: 50, desvio_padrao: 20, faixa_frequente: [30, 70] as [number, number] },
-        distribuicao_quadrantes: new Map<number, number>(),
-        repeticao_entre_concursos: [],
-        sequencias_consecutivas: [],
-        terminacoes: new Map<number, number>(),
-      };
-
-      const resultado = funcao(loteria, statsVazias, {});
-      const score = calcularScore(resultado.dezenas, loteria, statsVazias, resultado.indicadores);
-
-      jogosNovos.push({
-        dezenas: resultado.dezenas,
-        score: score.total,
-        breakdown: score as unknown as Record<string, number>,
+    try {
+      const response = await fetch(`/api/gerar/${slug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estrategia: estrategiaSelecionada,
+          quantidade,
+          score_minimo: scoreMinimo,
+        }),
       });
-    }
 
-    jogosNovos.sort((a, b) => b.score - a.score);
-    setJogosGerados(jogosNovos);
-    setIsGenerating(false);
+      if (!response.ok) {
+        throw new Error("Erro ao gerar jogos");
+      }
+
+      const data = await response.json();
+      setJogosGerados(data.jogos);
+      setLoteId(data.lote_id);
+    } catch (error) {
+      console.error("Erro ao gerar jogos:", error);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   return (
@@ -185,9 +170,17 @@ export default function GerarPage() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Jogos Gerados ({jogosGerados.length})
+              <CardTitle className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5" />
+                  Jogos Gerados ({jogosGerados.length})
+                </div>
+                {loteId && (
+                  <Badge variant="secondary" className="flex items-center gap-1">
+                    <Save className="h-3 w-3" />
+                    Salvo
+                  </Badge>
+                )}
               </CardTitle>
               <CardDescription>
                 Jogos ordenados por score de aderência estatística
