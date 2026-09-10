@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -47,7 +46,7 @@ interface JogoSalvo {
 export default function AnalisePage() {
   const searchParams = useSearchParams();
   const [loteriaSlug, setLoteriaSlug] = useState("megasena");
-  const [dezenasInput, setDezenasInput] = useState("");
+  const [dezenasSelecionadas, setDezenasSelecionadas] = useState<number[]>([]);
   const [analise, setAnalise] = useState<AnaliseResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [jogosSalvos, setJogosSalvos] = useState<JogoSalvo[]>([]);
@@ -61,7 +60,10 @@ export default function AnalisePage() {
     const loteriaParam = searchParams.get("loteria");
     const dezenasParam = searchParams.get("dezenas");
     if (loteriaParam) setLoteriaSlug(loteriaParam);
-    if (dezenasParam) setDezenasInput(dezenasParam);
+    if (dezenasParam) {
+      const nums = dezenasParam.split(/[\s,;-]+/).map(Number).filter(n => !isNaN(n));
+      setDezenasSelecionadas(nums);
+    }
   }, [searchParams]);
 
   // Fetch saved games when loteria changes
@@ -102,7 +104,7 @@ export default function AnalisePage() {
 
   useEffect(() => {
     if (jogoSelecionado && jogoSelecionado.loteria === loteriaSlug) {
-      setDezenasInput(jogoSelecionado.dezenas.join(" "));
+      setDezenasSelecionadas(jogoSelecionado.dezenas);
     }
   }, [jogoSalvoSelecionado, jogosSalvos, loteriaSlug]);
 
@@ -110,17 +112,22 @@ export default function AnalisePage() {
     if (slug) {
       setLoteriaSlug(slug);
       setJogoSalvoSelecionado("manual");
-      setDezenasInput("");
+      setDezenasSelecionadas([]);
     }
+  };
+
+  const toggleDezena = (numero: number) => {
+    setJogoSalvoSelecionado("manual");
+    setDezenasSelecionadas(prev =>
+      prev.includes(numero) ? prev.filter(n => n !== numero) : [...prev, numero]
+    );
   };
 
   const handleAnalisar = async () => {
     if (!loteria) return;
 
-    const dezenas = dezenasInput
-      .split(/[\s,;-]+/)
-      .map(Number)
-      .filter(n => !isNaN(n) && n >= loteria.universo_min && n <= loteria.universo_max)
+    const dezenas = dezenasSelecionadas
+      .filter(n => n >= loteria.universo_min && n <= loteria.universo_max)
       .sort((a, b) => a - b);
 
     if (dezenas.length < loteria.qtd_dezenas_min) return;
@@ -223,7 +230,7 @@ export default function AnalisePage() {
                   size="sm"
                   onClick={() => {
                     setJogoSalvoSelecionado("manual");
-                    setDezenasInput("");
+                    setDezenasSelecionadas([]);
                   }}
                 >
                   Limpar
@@ -237,19 +244,65 @@ export default function AnalisePage() {
             )}
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="dezenas">Dezenas</Label>
-            <Input
-              id="dezenas"
-              placeholder={loteria ? `Ex: ${Array.from({length: loteria.qtd_dezenas_padrao}, (_, i) => i + loteria.universo_min).slice(0, 3).join(' ')}` : "Digite as dezenas"}
-              value={dezenasInput}
-              onChange={e => {
-                setDezenasInput(e.target.value);
-                setJogoSalvoSelecionado("manual");
-              }}
-            />
+          <div className="space-y-3">
+            <Label className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Hash className="h-4 w-4" />
+                Dezenas
+              </span>
+              <span className="text-xs text-muted-foreground font-normal">
+                {dezenasSelecionadas.length} selecionada{dezenasSelecionadas.length !== 1 ? "s" : ""}
+                {loteria && ` / ${loteria.qtd_dezenas_padrao}`}
+              </span>
+            </Label>
+
+            {dezenasSelecionadas.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {dezenasSelecionadas.sort((a, b) => a - b).map(d => (
+                  <Badge
+                    key={d}
+                    variant="secondary"
+                    className="text-sm px-2.5 py-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive transition-colors"
+                    onClick={() => toggleDezena(d)}
+                  >
+                    {String(d).padStart(2, "0")}
+                    <span className="ml-1 text-xs opacity-60">✕</span>
+                  </Badge>
+                ))}
+              </div>
+            )}
+
+            {loteria && (
+              <div className="grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
+                {Array.from(
+                  { length: loteria.universo_max - loteria.universo_min + 1 },
+                  (_, i) => loteria.universo_min + i
+                ).map(numero => {
+                  const isSelected = dezenasSelecionadas.includes(numero);
+                  const atLimit = !isSelected && loteria && dezenasSelecionadas.length >= loteria.qtd_dezenas_padrao;
+                  return (
+                    <button
+                      key={numero}
+                      type="button"
+                      disabled={atLimit}
+                      onClick={() => toggleDezena(numero)}
+                      className={`h-9 rounded-lg text-sm font-bold tabular-nums transition-all duration-150 cursor-pointer
+                        ${isSelected
+                          ? "bg-primary text-primary-foreground shadow-md shadow-primary/20 scale-105"
+                          : atLimit
+                            ? "bg-muted/50 text-muted-foreground/40 cursor-not-allowed"
+                            : "bg-muted/70 text-foreground hover:bg-primary/15 hover:text-primary hover:scale-105"
+                        }`}
+                    >
+                      {String(numero).padStart(2, "0")}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <p className="text-xs text-muted-foreground">
-              {loteria && `Mínimo ${loteria.qtd_dezenas_min} dezenas (1-${loteria.universo_max})`}
+              {loteria && `Mínimo ${loteria.qtd_dezenas_min} dezenas — clique para selecionar, clique novamente para remover`}
             </p>
           </div>
 

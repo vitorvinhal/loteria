@@ -42,8 +42,12 @@ export async function POST(
     let errors = 0;
     const errorsList: number[] = [];
 
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
     for (let numero = start; numero <= end; numero++) {
       try {
+        await delay(350);
+
         const { data: existente } = await supabase
           .from("concursos")
           .select("id")

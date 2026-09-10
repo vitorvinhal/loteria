@@ -1,5 +1,6 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Zap,
   BarChart3,
@@ -7,19 +8,9 @@ import {
   Database,
   Code2,
   Layers,
-  Shield,
   CheckCircle2,
-  TrendingUp,
-  Users,
-  FileText,
-  Globe,
-  RefreshCw,
-  Lock,
-  Sparkles,
   Target,
-  Hash,
   Layout,
-  GitBranch,
 } from "lucide-react";
 
 interface ChangelogSection {
@@ -194,7 +185,6 @@ function VersionTimeline({ entry, index }: { entry: ChangelogEntry; index: numbe
   const isLast = index === changelog.length - 1;
   return (
     <div className="relative flex gap-6 pb-10">
-      {/* Timeline line */}
       <div className="flex flex-col items-center">
         <div
           className={`w-4 h-4 rounded-full border-2 ${
@@ -210,9 +200,7 @@ function VersionTimeline({ entry, index }: { entry: ChangelogEntry; index: numbe
         )}
       </div>
 
-      {/* Content */}
       <div className="flex-1 min-w-0 -mt-1">
-        {/* Version header */}
         <div className="flex items-center gap-3 mb-1 flex-wrap">
           <h2 className="text-xl font-bold tracking-tight">v{entry.version}</h2>
           <Badge
@@ -230,7 +218,6 @@ function VersionTimeline({ entry, index }: { entry: ChangelogEntry; index: numbe
           })}
         </p>
 
-        {/* Sections */}
         <div className="space-y-4">
           {entry.sections.map((section) => (
             <div
@@ -271,13 +258,11 @@ export default function ChangelogPage() {
         </p>
       </div>
 
-      <ScrollArea className="h-[calc(100vh-220px)]">
-        <div className="relative">
-          {changelog.map((entry, index) => (
-            <VersionTimeline key={`${entry.version}-${entry.tag}-${index}`} entry={entry} index={index} />
-          ))}
-        </div>
-      </ScrollArea>
+      <div className="relative">
+        {changelog.map((entry, index) => (
+          <VersionTimeline key={`${entry.version}-${entry.tag}-${index}`} entry={entry} index={index} />
+        ))}
+      </div>
     </div>
   );
 }

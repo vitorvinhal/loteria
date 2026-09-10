@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Settings, Save, Trash2, Shield, Bell, User } from "lucide-react";
+import { Settings, Save, Trash2, Shield, Bell, User, CheckCircle2 } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth/provider";
 
 export default function ConfiguracoesPage() {
@@ -16,6 +16,8 @@ export default function ConfiguracoesPage() {
   const router = useRouter();
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
+  const [notificacoesSorteio, setNotificacoesSorteio] = useState(true);
+  const [notificacoesScore, setNotificacoesScore] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
@@ -30,6 +32,8 @@ export default function ConfiguracoesPage() {
     if (user) {
       setNome(user.user_metadata?.nome || "");
       setEmail(user.email || "");
+      setNotificacoesSorteio(user.user_metadata?.notificacoes_sorteio !== false);
+      setNotificacoesScore(user.user_metadata?.notificacoes_score !== false);
     }
   }, [user]);
 
@@ -41,16 +45,22 @@ export default function ConfiguracoesPage() {
       const response = await fetch("/api/usuario/configuracoes", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nome }),
+        body: JSON.stringify({
+          nome,
+          notificacoes_sorteio: notificacoesSorteio,
+          notificacoes_score: notificacoesScore,
+        }),
       });
+
+      const data = await response.json();
 
       if (response.ok) {
         setMensagem({ tipo: "sucesso", texto: "Configurações salvas com sucesso!" });
       } else {
-        setMensagem({ tipo: "erro", texto: "Erro ao salvar configurações." });
+        setMensagem({ tipo: "erro", texto: data.error || "Erro ao salvar configurações." });
       }
     } catch {
-      setMensagem({ tipo: "erro", texto: "Erro ao salvar configurações." });
+      setMensagem({ tipo: "erro", texto: "Erro ao salvar configurações. Tente novamente." });
     } finally {
       setIsSaving(false);
     }
@@ -63,9 +73,7 @@ export default function ConfiguracoesPage() {
 
     setIsDeleting(true);
     try {
-      const response = await fetch("/api/usuario/excluir", {
-        method: "DELETE",
-      });
+      const response = await fetch("/api/usuario/excluir", { method: "DELETE" });
 
       if (response.ok) {
         router.push("/");
@@ -102,7 +110,16 @@ export default function ConfiguracoesPage() {
       </div>
 
       {mensagem && (
-        <div className={`mb-4 p-4 rounded-lg ${mensagem.tipo === "sucesso" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}`}>
+        <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${
+          mensagem.tipo === "sucesso"
+            ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+            : "bg-red-500/10 text-red-600 border border-red-500/20"
+        }`}>
+          {mensagem.tipo === "sucesso" ? (
+            <CheckCircle2 className="h-5 w-5 shrink-0" />
+          ) : (
+            <span className="text-red-500 shrink-0">✕</span>
+          )}
           {mensagem.texto}
         </div>
       )}
@@ -174,7 +191,16 @@ export default function ConfiguracoesPage() {
               <p className="font-medium">Resultados dos sorteios</p>
               <p className="text-sm text-muted-foreground">Receba notificação quando os resultados forem divulgados</p>
             </div>
-            <Badge variant="outline">Em breve</Badge>
+            <button
+              onClick={() => setNotificacoesSorteio(!notificacoesSorteio)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                notificacoesSorteio ? "bg-primary" : "bg-muted"
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                notificacoesSorteio ? "translate-x-6" : "translate-x-1"
+              }`} />
+            </button>
           </div>
 
           <Separator />
@@ -184,8 +210,31 @@ export default function ConfiguracoesPage() {
               <p className="font-medium">Jogos com score alto</p>
               <p className="text-sm text-muted-foreground">Seja notificado quando um jogo atingir score 80+</p>
             </div>
-            <Badge variant="outline">Em breve</Badge>
+            <button
+              onClick={() => setNotificacoesScore(!notificacoesScore)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                notificacoesScore ? "bg-primary" : "bg-muted"
+              }`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                notificacoesScore ? "translate-x-6" : "translate-x-1"
+              }`} />
+            </button>
           </div>
+
+          <Button onClick={handleSalvar} disabled={isSaving} variant="outline" className="w-full mt-2">
+            {isSaving ? (
+              <>
+                <Save className="h-4 w-4 mr-2 animate-spin" />
+                Salvando...
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 mr-2" />
+                Salvar Preferências
+              </>
+            )}
+          </Button>
         </CardContent>
       </Card>
 

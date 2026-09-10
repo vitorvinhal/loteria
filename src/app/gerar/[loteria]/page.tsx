@@ -154,7 +154,7 @@ export default function GerarPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          estrategia: estrategiaSelecionada,
+          estrategias: [estrategiaSelecionada],
           quantidade,
           score_minimo: scoreMinimo,
         }),
@@ -339,18 +339,9 @@ export default function GerarPage() {
                     >
                       <Minus className="h-4 w-4" />
                     </Button>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      value={quantidade}
-                      onChange={e => {
-                        const v = Number(e.target.value);
-                        if (v >= 1 && v <= 100) setQuantidade(v);
-                      }}
-                      className="w-20 h-10 text-center text-lg font-bold border border-input rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary tabular-nums"
-                      aria-label="Quantidade de jogos"
-                    />
+                    <span className="w-20 h-10 flex items-center justify-center text-lg font-bold tabular-nums bg-background border border-input rounded-lg select-none">
+                      {quantidade}
+                    </span>
                     <Button
                       variant="outline"
                       size="icon"
