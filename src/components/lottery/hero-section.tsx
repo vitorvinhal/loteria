@@ -9,9 +9,6 @@ import { Separator } from "@/components/ui/separator";
 import {
   Dices,
   BarChart3,
-  History,
-  GitCompare,
-  PenTool,
   Users,
   BookOpen,
   ArrowRight,
@@ -19,7 +16,6 @@ import {
   TrendingUp,
   Shield,
   Zap,
-  Trophy,
   Clock,
 } from "lucide-react";
 

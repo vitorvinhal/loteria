@@ -18,6 +18,14 @@ interface JogoHistorico {
   estrategia: string;
 }
 
+const mockJogos: JogoHistorico[] = [
+  { id: "1", loteria: "Mega-Sena", dezenas: [5, 12, 23, 34, 45, 56], score: 82, data: "2026-09-08", estrategia: "Quentes" },
+  { id: "2", loteria: "Lotofácil", dezenas: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25], score: 75, data: "2026-09-07", estrategia: "Par/Ímpar" },
+  { id: "3", loteria: "Quina", dezenas: [10, 25, 40, 55, 70], score: 91, data: "2026-09-06", estrategia: "Frias" },
+  { id: "4", loteria: "Mega-Sena", dezenas: [3, 18, 29, 41, 52, 60], score: 68, data: "2026-09-05", estrategia: "Soma" },
+  { id: "5", loteria: "Lotomania", dezenas: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95], score: 55, data: "2026-09-04", estrategia: "Quadrantes" },
+];
+
 export default function HistoricoJogosPage() {
   const [loteriaFiltro, setLoteriaFiltro] = useState("todas");
   const [jogos, setJogos] = useState<JogoHistorico[]>([]);
@@ -26,18 +34,8 @@ export default function HistoricoJogosPage() {
   const fetchJogos = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch(`/api/loterias`);
-      if (response.ok) {
-        // For now, use mock data since we need to implement a proper endpoint
-        const mockJogos: JogoHistorico[] = [
-          { id: "1", loteria: "Mega-Sena", dezenas: [5, 12, 23, 34, 45, 56], score: 82, data: "2026-09-08", estrategia: "Quentes" },
-          { id: "2", loteria: "Lotofácil", dezenas: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25], score: 75, data: "2026-09-07", estrategia: "Par/Ímpar" },
-          { id: "3", loteria: "Quina", dezenas: [10, 25, 40, 55, 70], score: 91, data: "2026-09-06", estrategia: "Frias" },
-          { id: "4", loteria: "Mega-Sena", dezenas: [3, 18, 29, 41, 52, 60], score: 68, data: "2026-09-05", estrategia: "Soma" },
-          { id: "5", loteria: "Lotomania", dezenas: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95], score: 55, data: "2026-09-04", estrategia: "Quadrantes" },
-        ];
-        setJogos(mockJogos);
-      }
+      await fetch("/api/loterias");
+      setJogos(mockJogos);
     } catch (error) {
       console.error("Erro ao carregar jogos:", error);
     } finally {
@@ -46,7 +44,19 @@ export default function HistoricoJogosPage() {
   };
 
   useEffect(() => {
-    fetchJogos();
+    const controller = new AbortController();
+    const load = async () => {
+      try {
+        await fetch("/api/loterias", { signal: controller.signal });
+        setJogos(mockJogos);
+      } catch {
+        // ignore abort
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    load();
+    return () => controller.abort();
   }, []);
 
   const jogosFiltrados = loteriaFiltro === "todas"

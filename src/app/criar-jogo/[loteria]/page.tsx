@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+
 import { Badge } from "@/components/ui/badge";
 import { PenTool, ArrowLeft, Target, Plus, X } from "lucide-react";
 import { getLoteriaPorSlug } from "@/lib/loterias";

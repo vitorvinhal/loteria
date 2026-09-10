@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, X, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen } from "lucide-react";
+import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 

@@ -1,5 +1,4 @@
-import { Loteria, Estatisticas, ScoreBreakdown, JogoGerado } from '@/types';
-import { ResultadoGeracao } from '@/modules/strategies';
+import { Loteria, Estatisticas, ScoreBreakdown } from '@/types';
 
 export interface ConfigScoring {
   pesos: {
