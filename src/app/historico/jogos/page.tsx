@@ -6,36 +6,51 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { History, Download, RefreshCw } from "lucide-react";
+import { History, Download, RefreshCw, Filter, ArrowUpDown } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
 
 interface JogoHistorico {
   id: string;
   loteria: string;
   dezenas: number[];
-  score: number;
-  data: string;
+  score: number | null;
+  criado_em: string;
   estrategia: string;
 }
 
-const mockJogos: JogoHistorico[] = [
-  { id: "1", loteria: "Mega-Sena", dezenas: [5, 12, 23, 34, 45, 56], score: 82, data: "2026-09-08", estrategia: "Quentes" },
-  { id: "2", loteria: "Lotofácil", dezenas: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25], score: 75, data: "2026-09-07", estrategia: "Par/Ímpar" },
-  { id: "3", loteria: "Quina", dezenas: [10, 25, 40, 55, 70], score: 91, data: "2026-09-06", estrategia: "Frias" },
-  { id: "4", loteria: "Mega-Sena", dezenas: [3, 18, 29, 41, 52, 60], score: 68, data: "2026-09-05", estrategia: "Soma" },
-  { id: "5", loteria: "Lotomania", dezenas: [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95], score: 55, data: "2026-09-04", estrategia: "Quadrantes" },
-];
+type SortField = "data" | "score" | "loteria";
+type SortOrder = "asc" | "desc";
 
 export default function HistoricoJogosPage() {
   const [loteriaFiltro, setLoteriaFiltro] = useState("todas");
   const [jogos, setJogos] = useState<JogoHistorico[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sortField, setSortField] = useState<SortField>("data");
+  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
 
   const fetchJogos = async () => {
     setIsLoading(true);
     try {
-      await fetch("/api/loterias");
-      setJogos(mockJogos);
+      const response = await fetch("/api/lotes");
+      if (response.ok) {
+        const data = await response.json();
+        const todosJogos: JogoHistorico[] = [];
+
+        for (const lote of data.lotes || []) {
+          for (const jogo of lote.jogos || []) {
+            todosJogos.push({
+              id: jogo.id,
+              loteria: lote.loteria,
+              dezenas: jogo.dezenas,
+              score: jogo.score,
+              criado_em: jogo.criado_em,
+              estrategia: lote.estrategia,
+            });
+          }
+        }
+
+        setJogos(todosJogos);
+      }
     } catch (error) {
       console.error("Erro ao carregar jogos:", error);
     } finally {
@@ -44,24 +59,57 @@ export default function HistoricoJogosPage() {
   };
 
   useEffect(() => {
-    const controller = new AbortController();
-    const load = async () => {
-      try {
-        await fetch("/api/loterias", { signal: controller.signal });
-        setJogos(mockJogos);
-      } catch {
-        // ignore abort
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    load();
-    return () => controller.abort();
+    fetchJogos();
   }, []);
 
   const jogosFiltrados = loteriaFiltro === "todas"
     ? jogos
-    : jogos.filter(j => j.loteria === LOTERIAS.find(l => l.slug === loteriaFiltro)?.nome);
+    : jogos.filter(j => j.loteria === loteriaFiltro);
+
+  const jogosOrdenados = [...jogosFiltrados].sort((a, b) => {
+    let comparacao = 0;
+
+    if (sortField === "data") {
+      comparacao = new Date(a.criado_em).getTime() - new Date(b.criado_em).getTime();
+    } else if (sortField === "score") {
+      comparacao = (a.score || 0) - (b.score || 0);
+    } else if (sortField === "loteria") {
+      comparacao = a.loteria.localeCompare(b.loteria);
+    }
+
+    return sortOrder === "desc" ? -comparacao : comparacao;
+  });
+
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortField(field);
+      setSortOrder("desc");
+    }
+  };
+
+  const exportarCSV = () => {
+    const headers = ["Loteria", "Dezenas", "Score", "Estratégia", "Data"];
+    const rows = jogosOrdenados.map(j => [
+      j.loteria,
+      j.dezenas.join(";"),
+      j.score?.toString() || "",
+      j.estrategia,
+      new Date(j.criado_em).toLocaleDateString("pt-BR"),
+    ]);
+
+    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `jogos-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const loteriasUnicas = [...new Set(jogos.map(j => j.loteria))];
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
@@ -82,8 +130,8 @@ export default function HistoricoJogosPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todas">Todas as loterias</SelectItem>
-            {LOTERIAS.map(l => (
-              <SelectItem key={l.slug} value={l.slug}>{l.nome}</SelectItem>
+            {loteriasUnicas.map(l => (
+              <SelectItem key={l} value={l}>{l}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -93,7 +141,7 @@ export default function HistoricoJogosPage() {
           Atualizar
         </Button>
 
-        <Button variant="outline" className="gap-2">
+        <Button variant="outline" className="gap-2" onClick={exportarCSV} disabled={jogos.length === 0}>
           <Download className="h-4 w-4" />
           Exportar CSV
         </Button>
@@ -101,14 +149,58 @@ export default function HistoricoJogosPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Jogos Gerados</CardTitle>
-          <CardDescription>{jogosFiltrados.length} jogos encontrados</CardDescription>
+          <CardTitle className="flex items-center justify-between">
+            <span>Jogos Gerados</span>
+            <Badge variant="outline">{jogosFiltrados.length} jogos</Badge>
+          </CardTitle>
+          <CardDescription>
+            <div className="flex gap-4 mt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => toggleSort("data")}
+                className="h-7 px-2"
+              >
+                <ArrowUpDown className="h-3 w-3 mr-1" />
+                Data {sortField === "data" && (sortOrder === "desc" ? "↓" : "↑")}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => toggleSort("score")}
+                className="h-7 px-2"
+              >
+                <ArrowUpDown className="h-3 w-3 mr-1" />
+                Score {sortField === "score" && (sortOrder === "desc" ? "↓" : "↑")}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => toggleSort("loteria")}
+                className="h-7 px-2"
+              >
+                <ArrowUpDown className="h-3 w-3 mr-1" />
+                Loteria {sortField === "loteria" && (sortOrder === "desc" ? "↓" : "↑")}
+              </Button>
+            </div>
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="text-center py-8 text-muted-foreground">
               <RefreshCw className="h-8 w-8 mx-auto mb-2 animate-spin" />
               <p>Carregando jogos...</p>
+            </div>
+          ) : jogos.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Filter className="h-8 w-8 mx-auto mb-2" />
+              <p>Nenhum jogo gerado ainda.</p>
+              <p className="text-sm mt-2">Gere seu primeiro jogo na página de geração.</p>
+            </div>
+          ) : jogosFiltrados.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Filter className="h-8 w-8 mx-auto mb-2" />
+              <p>Nenhum jogo encontrado para esta loteria.</p>
             </div>
           ) : (
             <Table>
@@ -122,31 +214,33 @@ export default function HistoricoJogosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {jogosFiltrados.map(jogo => (
+                {jogosOrdenados.map(jogo => (
                   <TableRow key={jogo.id}>
-                    <TableCell className="font-medium">{jogo.loteria}</TableCell>
+                    <TableCell className="font-medium">
+                      <Badge variant="outline">{jogo.loteria}</Badge>
+                    </TableCell>
                     <TableCell>
                       <div className="flex gap-1 flex-wrap">
                         {jogo.dezenas.slice(0, 6).map(d => (
-                          <Badge key={d} variant="outline" className="text-xs">
+                          <Badge key={d} variant="secondary" className="text-xs">
                             {String(d).padStart(2, "0")}
                           </Badge>
                         ))}
                         {jogo.dezenas.length > 6 && (
-                          <Badge variant="secondary" className="text-xs">
+                          <Badge variant="outline" className="text-xs">
                             +{jogo.dezenas.length - 6}
                           </Badge>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant={jogo.score >= 80 ? "default" : "secondary"}>
-                        {jogo.score}
+                      <Badge variant={jogo.score && jogo.score >= 80 ? "default" : "secondary"}>
+                        {jogo.score || "-"}
                       </Badge>
                     </TableCell>
-                    <TableCell>{jogo.estrategia}</TableCell>
+                    <TableCell className="capitalize">{jogo.estrategia}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {new Date(jogo.data).toLocaleDateString("pt-BR")}
+                      {new Date(jogo.criado_em).toLocaleDateString("pt-BR")}
                     </TableCell>
                   </TableRow>
                 ))}
