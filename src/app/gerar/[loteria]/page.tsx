@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dices, ArrowLeft, Sparkles, Target, BarChart3, Save } from "lucide-react";
 import { getLoteriaPorSlug } from "@/lib/loterias";
 import { getEstrategiasAtivas } from "@/modules/strategies";
+import { ShareGame } from "@/components/lottery/share-game";
 
 interface JogoGerado {
   dezenas: number[];
@@ -223,6 +224,14 @@ export default function GerarPage() {
               )}
             </CardContent>
           </Card>
+
+          {jogosGerados.length > 0 && (
+            <ShareGame
+              dezenas={jogosGerados[0].dezenas}
+              loteria={loteria.nome}
+              score={jogosGerados[0].score}
+            />
+          )}
         </div>
       </div>
     </div>

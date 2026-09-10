@@ -10,9 +10,25 @@ import { AuthProvider } from "@/lib/supabase/auth/provider";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Loterias CAIXA - Gerador Inteligente de Jogos",
-  description: "Sistema completo para geração, pontuação e análise de jogos das loterias da CAIXA. Ferramentas estatísticas e combinatórias para apoiar suas escolhas.",
-  keywords: ["loterias", "caixa", "lotofácil", "mega-sena", "quina", "lotomania", "gerador de jogos", "estatísticas"],
+  title: "Loterias CAIXA - Gerador de Jogos Inteligente",
+  description:
+    "Sistema completo para geração, análise e comparação de jogos das loterias da CAIXA",
+  keywords: ["loterias", "caixa", "megasena", "lotofacil", "quina", "gerador de jogos"],
+  openGraph: {
+    title: "Loterias CAIXA - Gerador de Jogos Inteligente",
+    description:
+      "Sistema completo para geração, análise e comparação de jogos das loterias da CAIXA",
+    url: "https://loterias-caixa-omega.vercel.app",
+    siteName: "Loterias CAIXA",
+    locale: "pt_BR",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Loterias CAIXA - Gerador de Jogos Inteligente",
+    description:
+      "Sistema completo para geração, análise e comparação de jogos das loterias da CAIXA",
+  },
 };
 
 export default function RootLayout({
@@ -21,7 +37,23 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  var t = localStorage.getItem('theme');
+                  var d = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+                  if (d) document.documentElement.classList.add('dark');
+                  else document.documentElement.classList.remove('dark');
+                } catch(e) {}
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={inter.className}>
         <AuthProvider>
           <TooltipProvider>

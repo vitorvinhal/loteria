@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { PenTool, ArrowLeft, Target, Plus, X } from "lucide-react";
 import { getLoteriaPorSlug } from "@/lib/loterias";
+import { ShareGame } from "@/components/lottery/share-game";
 
 export default function CriarJogoPage() {
   const params = useParams();
@@ -178,6 +179,14 @@ export default function CriarJogoPage() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {analise && dezenas.length > 0 && (
+          <ShareGame
+            dezenas={dezenas}
+            loteria={loteria.nome}
+            score={analise.score}
+          />
         )}
       </div>
     </div>

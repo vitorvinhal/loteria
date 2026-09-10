@@ -6,6 +6,7 @@ import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, 
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/supabase/auth/provider";
+import { ThemeToggle } from "@/components/layout/theme-toggle";
 
 const navItems = [
   { href: "/gerar/megasena", label: "Gerar Jogos", icon: Dices },
@@ -47,6 +48,8 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 ml-auto">
+          <ThemeToggle />
+
           {!isLoading && (
             <>
               {user ? (
@@ -114,6 +117,11 @@ export function Navbar() {
                   ))}
 
                   <div className="border-t pt-4 mt-4">
+                    <div className="flex items-center gap-2 px-3 mb-2">
+                      <ThemeToggle />
+                      <span className="text-sm text-muted-foreground">Tema</span>
+                    </div>
+
                     {!isLoading && (
                       <>
                         {user ? (

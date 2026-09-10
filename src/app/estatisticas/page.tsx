@@ -6,6 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { BarChart3, TrendingUp, Hash, Target, ArrowUp, ArrowDown } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
+import { FrequencyChart } from "@/components/lottery/frequency-chart";
 
 interface Estatistica {
   numero: number;
@@ -229,6 +230,18 @@ export default function EstatisticasPage() {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Gráfico de Frequência</CardTitle>
+              <CardDescription>
+                Visualização gráfica da frequência de cada número nos concursos
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <FrequencyChart data={analise.numeros} title="Frequência dos Números" description="Percentual de aparição por número" />
             </CardContent>
           </Card>
 
