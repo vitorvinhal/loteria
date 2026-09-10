@@ -6,40 +6,70 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BarChart3, Target, TrendingUp, Hash, Zap, ArrowRight } from "lucide-react";
+import { LOTERIAS } from "@/lib/loterias";
 
-import { BarChart3, Target, TrendingUp, Hash } from "lucide-react";
-
-export default function AnalisePage() {
-  const [dezenasInput, setDezenasInput] = useState("");
-  const [analise, setAnalise] = useState<{
-    dezenas: number[];
-    score: number;
-    mediaNumeros: number;
+interface AnaliseResult {
+  dezenas: number[];
+  score: number;
+  breakdown: {
+    frequencia: number;
+    atraso: number;
+    par_impar: number;
     soma: number;
+    distribuicao: number;
+    exclusao_padroes: number;
+    aderencia_estrategia: number;
+    total: number;
+  };
+  estatisticas: {
+    soma: number;
+    media: number;
     pares: number;
     impares: number;
-  } | null>(null);
+    sequencias: number;
+    spread: number;
+  };
+}
 
-  const handleAnalisar = () => {
+export default function AnalisePage() {
+  const [loteriaSlug, setLoteriaSlug] = useState("megasena");
+  const [dezenasInput, setDezenasInput] = useState("");
+  const [analise, setAnalise] = useState<AnaliseResult | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  const loteria = LOTERIAS.find(l => l.slug === loteriaSlug);
+
+  const handleAnalisar = async () => {
+    if (!loteria) return;
+
     const dezenas = dezenasInput
       .split(/[\s,;-]+/)
       .map(Number)
-      .filter(n => !isNaN(n) && n > 0)
+      .filter(n => !isNaN(n) && n >= loteria.universo_min && n <= loteria.universo_max)
       .sort((a, b) => a - b);
 
-    if (dezenas.length < 5) return;
+    if (dezenas.length < loteria.qtd_dezenas_min) return;
 
-    const soma = dezenas.reduce((a, b) => a + b, 0);
-    const pares = dezenas.filter(d => d % 2 === 0).length;
+    setIsAnalyzing(true);
 
-    setAnalise({
-      dezenas,
-      score: Math.floor(Math.random() * 40) + 50,
-      mediaNumeros: Math.round(soma / dezenas.length),
-      soma,
-      pares,
-      impares: dezenas.length - pares,
-    });
+    try {
+      const response = await fetch(`/api/analisar/${loteriaSlug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dezenas }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setAnalise(data);
+      }
+    } catch (error) {
+      console.error("Erro ao analisar:", error);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
@@ -56,29 +86,58 @@ export default function AnalisePage() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Digite as Dezenas</CardTitle>
-          <CardDescription>Separadas por espaço, vírgula ou ponto e vírgula</CardDescription>
+          <CardTitle>Configurar Análise</CardTitle>
+          <CardDescription>Selecione a loteria e digite as dezenas</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Loteria</Label>
+            <Select value={loteriaSlug} onValueChange={(v) => v && setLoteriaSlug(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {LOTERIAS.map(l => (
+                  <SelectItem key={l.slug} value={l.slug}>
+                    {l.nome} ({l.universo_min}-{l.universo_max})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="dezenas">Dezenas</Label>
             <Input
               id="dezenas"
-              placeholder="Ex: 5 12 23 34 45 56"
+              placeholder={loteria ? `Ex: ${Array.from({length: loteria.qtd_dezenas_padrao}, (_, i) => i + loteria.universo_min).slice(0, 3).join(' ')}` : "Digite as dezenas"}
               value={dezenasInput}
               onChange={e => setDezenasInput(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              {loteria && `Mínimo ${loteria.qtd_dezenas_min} dezenas (1-${loteria.universo_max})`}
+            </p>
           </div>
-          <Button onClick={handleAnalisar}>
-            <Target className="h-4 w-4 mr-2" />
-            Analisar Jogo
+
+          <Button onClick={handleAnalisar} disabled={isAnalyzing}>
+            {isAnalyzing ? (
+              <>
+                <Zap className="h-4 w-4 mr-2 animate-spin" />
+                Analisando...
+              </>
+            ) : (
+              <>
+                <Target className="h-4 w-4 mr-2" />
+                Analisar Jogo
+              </>
+            )}
           </Button>
         </CardContent>
       </Card>
 
       {analise && (
         <div className="space-y-6">
-          <Card>
+          <Card className="border-primary/50 bg-primary/5">
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Resultado da Análise</span>
@@ -101,7 +160,7 @@ export default function AnalisePage() {
             </CardContent>
           </Card>
 
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid md:grid-cols-2 gap-4">
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
@@ -110,8 +169,10 @@ export default function AnalisePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{analise.soma}</p>
-                <p className="text-xs text-muted-foreground">Média: {analise.mediaNumeros}</p>
+                <p className="text-2xl font-bold">{analise.estatisticas.soma}</p>
+                <p className="text-xs text-muted-foreground">
+                  Média: {analise.estatisticas.media} | Spread: {analise.estatisticas.spread}
+                </p>
               </CardContent>
             </Card>
 
@@ -123,8 +184,10 @@ export default function AnalisePage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">{analise.pares}/{analise.impares}</p>
-                <p className="text-xs text-muted-foreground">{analise.pares} pares, {analise.impares} ímpares</p>
+                <p className="text-2xl font-bold">{analise.estatisticas.pares}/{analise.estatisticas.impares}</p>
+                <p className="text-xs text-muted-foreground">
+                  {analise.estatisticas.pares} pares, {analise.estatisticas.impares} ímpares
+                </p>
               </CardContent>
             </Card>
 
@@ -132,12 +195,43 @@ export default function AnalisePage() {
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm flex items-center gap-2">
                   <Target className="h-4 w-4" />
-                  Distribuição
+                  Sequências
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold">4/4</p>
-                <p className="text-xs text-muted-foreground">Quadrantes cobertos</p>
+                <p className="text-2xl font-bold">{analise.estatisticas.sequencias}</p>
+                <p className="text-xs text-muted-foreground">Números consecutivos</p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <Zap className="h-4 w-4" />
+                  Score por Critério
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Frequência</span>
+                  <Badge variant="outline">{analise.breakdown.frequencia}</Badge>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Atraso</span>
+                  <Badge variant="outline">{analise.breakdown.atraso}</Badge>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Par/Ímpar</span>
+                  <Badge variant="outline">{analise.breakdown.par_impar}</Badge>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Soma</span>
+                  <Badge variant="outline">{analise.breakdown.soma}</Badge>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Distribuição</span>
+                  <Badge variant="outline">{analise.breakdown.distribuicao}</Badge>
+                </div>
               </CardContent>
             </Card>
           </div>

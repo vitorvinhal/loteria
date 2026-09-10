@@ -6,26 +6,99 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { Users, Calculator, TrendingUp } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, Calculator, TrendingUp, Plus, X, Dices } from "lucide-react";
+import { LOTERIAS } from "@/lib/loterias";
+
+interface Jogo {
+  dezenas: number[];
+  score: number;
+}
 
 export default function BolaoPage() {
+  const [loteriaSlug, setLoteriaSlug] = useState("megasena");
   const [quantidadeCotas, setQuantidadeCotas] = useState(10);
-  const [custoAposta, setCustoAposta] = useState(50);
-  const [jogos, setJogos] = useState<number[][]>([
-    [5, 12, 23, 34, 45, 56],
-    [3, 18, 29, 41, 52, 60],
-    [1, 15, 28, 37, 44, 55],
-  ]);
+  const [jogos, setJogos] = useState<Jogo[]>([]);
+  const [novoJogoInput, setNovoJogoInput] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const custoTotal = custoAposta * jogos.length;
-  const custoPorCota = custoTotal / quantidadeCotas;
+  const loteria = LOTERIAS.find(l => l.slug === loteriaSlug);
 
-  const projecoes = [
-    { acertos: 4, premioEstimado: 1500, porCota: 1500 / quantidadeCotas },
-    { acertos: 5, premioEstimado: 35000, porCota: 35000 / quantidadeCotas },
-    { acertos: 6, premioEstimado: 3500000, porCota: 3500000 / quantidadeCotas },
-  ];
+  const custoTotal = loteria ? loteria.preco_aposta_base * jogos.length : 0;
+  const custoPorCota = quantidadeCotas > 0 ? custoTotal / quantidadeCotas : 0;
+
+  const adicionarJogo = () => {
+    if (!loteria) return;
+
+    const dezenas = novoJogoInput
+      .split(/[\s,;-]+/)
+      .map(Number)
+      .filter(n => !isNaN(n) && n >= loteria.universo_min && n <= loteria.universo_max)
+      .sort((a, b) => a - b);
+
+    if (dezenas.length < loteria.qtd_dezenas_min) return;
+
+    setJogos(prev => [...prev, { dezenas, score: 0 }]);
+    setNovoJogoInput("");
+  };
+
+  const removerJogo = (index: number) => {
+    setJogos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const gerarJogosAutomaticos = async () => {
+    if (!loteria) return;
+
+    setIsGenerating(true);
+    try {
+      const response = await fetch(`/api/gerar/${loteriaSlug}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          estrategia: "quentes",
+          quantidade: 5,
+          score_minimo: 60,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const novosJogos = data.jogos.map((j: Jogo) => ({
+          dezenas: j.dezenas,
+          score: j.score,
+        }));
+        setJogos(prev => [...prev, ...novosJogos]);
+      }
+    } catch (error) {
+      console.error("Erro ao gerar jogos:", error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const projecoes = loteria?.regras_vitoria.map(regra => {
+    const premiosEstimados: Record<number, number> = {
+      4: 1500,
+      5: 35000,
+      6: 3500000,
+      11: 2000,
+      12: 5000,
+      13: 50000,
+      14: 500000,
+      15: 5000000,
+      2: 500,
+      3: 2000,
+      7: 100000,
+    };
+
+    const premio = premiosEstimados[regra.acertos_min] || 1000;
+    return {
+      acertos: regra.acertos_min,
+      descricao: regra.descricao,
+      premioEstimado: premio,
+      porCota: quantidadeCotas > 0 ? premio / quantidadeCotas : 0,
+    };
+  }) || [];
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">
@@ -46,6 +119,22 @@ export default function BolaoPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
+              <Label>Loteria</Label>
+              <Select value={loteriaSlug} onValueChange={(v) => v && setLoteriaSlug(v)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOTERIAS.map(l => (
+                    <SelectItem key={l.slug} value={l.slug}>
+                      {l.nome} (R$ {l.preco_aposta_base.toFixed(2)})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="cotas">Quantidade de Cotas</Label>
               <Input
                 id="cotas"
@@ -53,18 +142,6 @@ export default function BolaoPage() {
                 min={1}
                 value={quantidadeCotas}
                 onChange={e => setQuantidadeCotas(Number(e.target.value))}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="custo">Custo da Aposta (R$)</Label>
-              <Input
-                id="custo"
-                type="number"
-                min={0}
-                step={0.5}
-                value={custoAposta}
-                onChange={e => setCustoAposta(Number(e.target.value))}
               />
             </div>
           </CardContent>
@@ -90,7 +167,6 @@ export default function BolaoPage() {
               <span className="text-muted-foreground">Custo por cota:</span>
               <span className="font-medium text-primary">R$ {custoPorCota.toFixed(2)}</span>
             </div>
-            <Separator />
             <div className="flex justify-between">
               <span className="text-muted-foreground">Cotas:</span>
               <Badge variant="secondary">{quantidadeCotas}</Badge>
@@ -101,24 +177,71 @@ export default function BolaoPage() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle>Jogos do Bolão</CardTitle>
-          <CardDescription>{jogos.length} jogos incluídos</CardDescription>
+          <CardTitle className="flex items-center justify-between">
+            <span>Adicionar Jogos</span>
+            <Button
+              size="sm"
+              onClick={gerarJogosAutomaticos}
+              disabled={isGenerating}
+            >
+              {isGenerating ? (
+                <>
+                  <Dices className="h-4 w-4 mr-1 animate-spin" />
+                  Gerando...
+                </>
+              ) : (
+                <>
+                  <Dices className="h-4 w-4 mr-1" />
+                  Gerar 5 Jogos
+                </>
+              )}
+            </Button>
+          </CardTitle>
+          <CardDescription>
+            Digite as dezenas ou gere jogos automaticamente
+          </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {jogos.map((jogo, index) => (
-              <div key={index} className="flex items-center gap-4 p-2 border rounded-lg">
-                <span className="text-sm text-muted-foreground w-8">#{index + 1}</span>
-                <div className="flex gap-1">
-                  {jogo.map(d => (
-                    <Badge key={d} variant="outline">
-                      {String(d).padStart(2, "0")}
-                    </Badge>
-                  ))}
-                </div>
-              </div>
-            ))}
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              placeholder={loteria ? `Dezenas (${loteria.universo_min}-${loteria.universo_max})` : "Dezenas"}
+              value={novoJogoInput}
+              onChange={e => setNovoJogoInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && adicionarJogo()}
+            />
+            <Button onClick={adicionarJogo} size="icon">
+              <Plus className="h-4 w-4" />
+            </Button>
           </div>
+
+          {jogos.length > 0 && (
+            <div className="space-y-2">
+              {jogos.map((jogo, index) => (
+                <div key={index} className="flex items-center justify-between p-2 border rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <span className="text-sm text-muted-foreground w-8">#{index + 1}</span>
+                    <div className="flex gap-1">
+                      {jogo.dezenas.map(d => (
+                        <Badge key={d} variant="outline">
+                          {String(d).padStart(2, "0")}
+                        </Badge>
+                      ))}
+                    </div>
+                    {jogo.score > 0 && (
+                      <Badge variant="secondary">{jogo.score}</Badge>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removerJogo(index)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -133,22 +256,26 @@ export default function BolaoPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {projecoes.map((proj) => (
-              <div key={proj.acertos} className="flex items-center justify-between p-3 border rounded-lg">
-                <div>
-                  <p className="font-medium">{proj.acertos} acertos (Quadra/Quina/Sena)</p>
-                  <p className="text-sm text-muted-foreground">
-                    Prêmio estimado: R$ {proj.premioEstimado.toLocaleString("pt-BR")}
-                  </p>
+          {jogos.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p>Adicione jogos para ver as projeções de premiação.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {projecoes.map((proj) => (
+                <div key={proj.acertos} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <p className="font-medium">{proj.acertos} acertos</p>
+                    <p className="text-sm text-muted-foreground">{proj.descricao}</p>
+                  </div>
+                  <Badge variant="default" className="text-lg">
+                    R$ {proj.porCota.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    <span className="text-xs ml-1">/cota</span>
+                  </Badge>
                 </div>
-                <Badge variant="default" className="text-lg">
-                  R$ {proj.porCota.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                  <span className="text-xs ml-1">/cota</span>
-                </Badge>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

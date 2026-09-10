@@ -58,6 +58,7 @@ export async function POST(
     const explicacao = gerarExplicacaoScore(score, loteria);
 
     const soma = dezenas.reduce((a, b) => a + b, 0);
+    const media = Math.round(soma / dezenas.length);
     const pares = dezenas.filter(d => d % 2 === 0).length;
     const impares = dezenas.length - pares;
 
@@ -67,28 +68,43 @@ export async function POST(
       dezenas.map(d => Math.floor((d - loteria.universo_min) / tamanhoQuadrante))
     );
 
-    let sequenciaMax = 1;
+    let sequencias = 0;
     let sequenciaAtual = 1;
     const ordenadas = [...dezenas].sort((a, b) => a - b);
     for (let i = 1; i < ordenadas.length; i++) {
       if (ordenadas[i] === ordenadas[i - 1] + 1) {
         sequenciaAtual++;
-        sequenciaMax = Math.max(sequenciaMax, sequenciaAtual);
       } else {
+        if (sequenciaAtual > 1) sequencias++;
         sequenciaAtual = 1;
       }
     }
+    if (sequenciaAtual > 1) sequencias++;
+
+    const spread = ordenadas[ordenadas.length - 1] - ordenadas[0];
 
     return NextResponse.json({
+      dezenas: ordenadas,
       score: score.total,
-      breakdown: score,
+      breakdown: {
+        frequencia: score.frequencia,
+        atraso: score.atraso,
+        par_impar: score.par_impar,
+        soma: score.soma,
+        distribuicao: score.distribuicao,
+        exclusao_padroes: score.exclusao_padroes,
+        aderencia_estrategia: score.aderencia_estrategia,
+        total: score.total,
+      },
       explicacao,
-      analise: {
+      estatisticas: {
         soma,
+        media,
         pares,
         impares,
         quadrantes_cobertos: quadrantes.size,
-        sequencia_maxima: sequenciaMax,
+        sequencias,
+        spread,
       },
     });
   } catch (error) {
