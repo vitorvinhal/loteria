@@ -7,6 +7,7 @@ import { Navbar } from "@/components/layout/navbar";
 import { Footer } from "@/components/layout/footer";
 import { VersionBadge } from "@/components/layout/version-badge";
 import { AuthProvider } from "@/lib/supabase/auth/provider";
+import { AuthGuard } from "@/components/layout/auth-guard";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -49,24 +50,11 @@ export default function RootLayout({
     <html lang="pt-BR" suppressHydrationWarning>
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  var t = localStorage.getItem('theme');
-                  var d = t === 'dark' || (t !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-                  if (d) document.documentElement.classList.add('dark');
-                  else document.documentElement.classList.remove('dark');
-                } catch(e) {}
-              })();
-            `,
-          }}
-        />
       </head>
       <body className={inter.className}>
         <AuthProvider>
           <TooltipProvider>
+            <AuthGuard>
             <div className="flex min-h-screen flex-col">
               <Navbar />
               <main className="flex-1">{children}</main>
@@ -74,6 +62,7 @@ export default function RootLayout({
             </div>
             <Toaster />
             <VersionBadge />
+            </AuthGuard>
           </TooltipProvider>
         </AuthProvider>
       </body>

@@ -1,13 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, Calculator, TrendingUp, Plus, X, Dices } from "lucide-react";
+import { Users, Calculator, TrendingUp, Plus, Minus, X, Dices, Coins, RotateCcw } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
 
 interface Jogo {
@@ -15,31 +15,93 @@ interface Jogo {
   score: number;
 }
 
+const PRECOS_POR_QTD: Record<string, Record<number, number>> = {
+  lotofacil: { 15: 3.00, 16: 48.00, 17: 408.00, 18: 2448.00, 19: 11628.00, 20: 46512.00 },
+  megasena: { 6: 5.00, 7: 35.00, 8: 140.00, 9: 420.00, 10: 1050.00, 11: 2310.00, 12: 4620.00 },
+  quina: { 5: 2.50, 6: 15.00, 7: 52.50, 8: 126.00, 9: 210.00, 10: 252.00 },
+  duplasena: { 6: 2.50, 7: 17.50, 8: 70.00, 9: 210.00, 10: 525.00 },
+  diadesorte: { 7: 3.50, 8: 14.00, 9: 42.00, 10: 105.00, 11: 231.00 },
+  maismilionaria: { 6: 6.00, 7: 42.00, 8: 168.00 },
+  lotomania: { 50: 3.50 },
+  timemania: { 10: 4.50 },
+  supersete: { 7: 2.50 },
+};
+
+function getPreco(slug: string, qtd: number): number {
+  const tabela = PRECOS_POR_QTD[slug];
+  if (tabela && tabela[qtd] !== undefined) return tabela[qtd];
+  const loteria = LOTERIAS.find(l => l.slug === slug);
+  return loteria?.preco_aposta_base || 0;
+}
+
+function getOpcoesQtd(slug: string): number[] {
+  const tabela = PRECOS_POR_QTD[slug];
+  if (tabela) return Object.keys(tabela).map(Number).sort((a, b) => a - b);
+  const loteria = LOTERIAS.find(l => l.slug === slug);
+  if (!loteria) return [];
+  const opcoes: number[] = [];
+  for (let i = loteria.qtd_dezenas_min; i <= loteria.qtd_dezenas_max; i++) {
+    opcoes.push(i);
+  }
+  return opcoes;
+}
+
 export default function BolaoPage() {
   const [loteriaSlug, setLoteriaSlug] = useState("megasena");
   const [quantidadeCotas, setQuantidadeCotas] = useState(10);
   const [jogos, setJogos] = useState<Jogo[]>([]);
-  const [novoJogoInput, setNovoJogoInput] = useState("");
+  const [dezenasSelecionadas, setDezenasSelecionadas] = useState<number[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [qtdDezenas, setQtdDezenas] = useState<number>(LOTERIAS.find(l => l.slug === "megasena")?.qtd_dezenas_padrao || 6);
+  const [emailConvidado, setEmailConvidado] = useState("");
+  const [participantes, setParticipantes] = useState<{ nome: string; email: string; cotas: number }[]>([]);
+  const [convidando, setConvidando] = useState(false);
 
   const loteria = LOTERIAS.find(l => l.slug === loteriaSlug);
 
-  const custoTotal = loteria ? loteria.preco_aposta_base * jogos.length : 0;
+  const opcoesQtd = useMemo(() => getOpcoesQtd(loteriaSlug), [loteriaSlug]);
+  const precoAtual = getPreco(loteriaSlug, qtdDezenas);
+
+  const custoTotal = loteria ? precoAtual * jogos.length : 0;
   const custoPorCota = quantidadeCotas > 0 ? custoTotal / quantidadeCotas : 0;
 
-  const adicionarJogo = () => {
+  const todosNumeros = useMemo(() => {
+    if (!loteria) return [];
+    const nums: number[] = [];
+    for (let i = loteria.universo_min; i <= loteria.universo_max; i++) {
+      nums.push(i);
+    }
+    return nums;
+  }, [loteria]);
+
+  const toggleDezena = (num: number) => {
+    if (dezenasSelecionadas.includes(num)) {
+      setDezenasSelecionadas(dezenasSelecionadas.filter(d => d !== num));
+    } else if (loteria && dezenasSelecionadas.length < qtdDezenas) {
+      setDezenasSelecionadas([...dezenasSelecionadas, num].sort((a, b) => a - b));
+    }
+  };
+
+  const limparSelecao = () => {
+    setDezenasSelecionadas([]);
+  };
+
+  const selecionarAleatorio = () => {
     if (!loteria) return;
+    const copia = [...todosNumeros];
+    const selecionadas: number[] = [];
+    for (let i = 0; i < qtdDezenas; i++) {
+      const idx = Math.floor(Math.random() * copia.length);
+      selecionadas.push(copia.splice(idx, 1)[0]);
+    }
+    setDezenasSelecionadas(selecionadas.sort((a, b) => a - b));
+  };
 
-    const dezenas = novoJogoInput
-      .split(/[\s,;-]+/)
-      .map(Number)
-      .filter(n => !isNaN(n) && n >= loteria.universo_min && n <= loteria.universo_max)
-      .sort((a, b) => a - b);
+  const adicionarJogo = () => {
+    if (!loteria || dezenasSelecionadas.length < loteria.qtd_dezenas_min) return;
 
-    if (dezenas.length < loteria.qtd_dezenas_min) return;
-
-    setJogos(prev => [...prev, { dezenas, score: 0 }]);
-    setNovoJogoInput("");
+    setJogos(prev => [...prev, { dezenas: [...dezenasSelecionadas], score: 0 }]);
+    setDezenasSelecionadas([]);
   };
 
   const removerJogo = (index: number) => {
@@ -55,9 +117,10 @@ export default function BolaoPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          estrategia: "quentes",
+          estrategias: ["quentes"],
           quantidade: 5,
           score_minimo: 60,
+          qtd_dezenas: qtdDezenas,
         }),
       });
 
@@ -73,6 +136,40 @@ export default function BolaoPage() {
       console.error("Erro ao gerar jogos:", error);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleConvidar = async () => {
+    const email = emailConvidado.trim();
+    if (!email || !loteria || jogos.length === 0) {
+      alert("Informe o email do usuário e adicione jogos ao bolão antes de convidar.");
+      return;
+    }
+    setConvidando(true);
+    try {
+      const res = await fetch("/api/bolao/convites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email_convidado: email,
+          loteria_id: loteria.id,
+          quantidade_cotas: quantidadeCotas,
+          jogos: jogos,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setParticipantes(prev => [...prev, { nome: email.split("@")[0], email, cotas: quantidadeCotas }]);
+        setEmailConvidado("");
+        alert(`Convite enviado para ${email}.`);
+      } else {
+        alert(data.error || "Erro ao enviar convite.");
+      }
+    } catch (e) {
+      console.error("Erro ao convidar:", e);
+      alert("Erro ao enviar convite. Tente novamente.");
+    } finally {
+      setConvidando(false);
     }
   };
 
@@ -120,14 +217,17 @@ export default function BolaoPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Loteria</Label>
-              <Select value={loteriaSlug} onValueChange={(v) => v && setLoteriaSlug(v)}>
-                <SelectTrigger>
+              <Select value={loteriaSlug} onValueChange={(v) => { if (v) { setLoteriaSlug(v); setDezenasSelecionadas([]); const nova = LOTERIAS.find(l => l.slug === v); setQtdDezenas(nova?.qtd_dezenas_padrao || 6); } }}>
+                <SelectTrigger className="w-full h-11">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
-                  {LOTERIAS.map(l => (
-                    <SelectItem key={l.slug} value={l.slug}>
-                      {l.nome} (R$ {l.preco_aposta_base.toFixed(2)})
+                <SelectContent className="z-50">
+                  {LOTERIAS.filter(l => l.ativo).map(l => (
+                    <SelectItem key={l.slug} value={l.slug} className="py-2.5">
+                      <span className="font-medium">{l.nome}</span>
+                      <span className="ml-2 text-xs text-muted-foreground">
+                        R$ {l.preco_aposta_base.toFixed(2).replace('.', ',')}
+                      </span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -136,13 +236,38 @@ export default function BolaoPage() {
 
             <div className="space-y-2">
               <Label htmlFor="cotas">Quantidade de Cotas</Label>
-              <Input
-                id="cotas"
-                type="number"
-                min={1}
-                value={quantidadeCotas}
-                onChange={e => setQuantidadeCotas(Number(e.target.value))}
-              />
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 rounded-full shrink-0"
+                  disabled={quantidadeCotas <= 1}
+                  onClick={() => setQuantidadeCotas(prev => Math.max(1, prev - 1))}
+                  aria-label="Diminuir cotas"
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  id="cotas"
+                  type="number"
+                  min={1}
+                  value={quantidadeCotas}
+                  onChange={e => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val)) setQuantidadeCotas(Math.max(1, val));
+                  }}
+                  className="w-16 h-10 text-center text-lg font-bold tabular-nums"
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-10 w-10 rounded-full shrink-0"
+                  onClick={() => setQuantidadeCotas(prev => prev + 1)}
+                  aria-label="Aumentar cotas"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -161,11 +286,11 @@ export default function BolaoPage() {
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Custo total:</span>
-              <span className="font-medium">R$ {custoTotal.toFixed(2)}</span>
+              <span className="font-medium">R$ {custoTotal.toFixed(2).replace('.', ',')}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Custo por cota:</span>
-              <span className="font-medium text-primary">R$ {custoPorCota.toFixed(2)}</span>
+              <span className="font-medium text-primary">R$ {custoPorCota.toFixed(2).replace('.', ',')}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Cotas:</span>
@@ -175,54 +300,167 @@ export default function BolaoPage() {
         </Card>
       </div>
 
+      {opcoesQtd.length > 1 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Quantidade de Dezenas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {opcoesQtd.map(qtd => {
+                const preco = getPreco(loteriaSlug, qtd);
+                const isSelected = qtd === qtdDezenas;
+                return (
+                  <button
+                    key={qtd}
+                    onClick={() => { setQtdDezenas(qtd); setDezenasSelecionadas([]); }}
+                    className={`flex flex-col items-center px-3 py-2 rounded-lg border-2 transition-all cursor-pointer ${
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-border hover:border-primary/40"
+                    }`}
+                  >
+                    <span className={`text-sm font-bold ${isSelected ? "text-primary" : ""}`}>
+                      {qtd} dezenas
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      R$ {preco.toFixed(2).replace('.', ',')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Adicionar Jogos</span>
-            <Button
-              size="sm"
-              onClick={gerarJogosAutomaticos}
-              disabled={isGenerating}
-            >
-              {isGenerating ? (
-                <>
-                  <Dices className="h-4 w-4 mr-1 animate-spin" />
-                  Gerando...
-                </>
-              ) : (
-                <>
-                  <Dices className="h-4 w-4 mr-1" />
-                  Gerar 5 Jogos
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={gerarJogosAutomaticos}
+                disabled={isGenerating}
+              >
+                {isGenerating ? (
+                  <>
+                    <Dices className="h-4 w-4 mr-1 animate-spin" />
+                    Gerando...
+                  </>
+                ) : (
+                  <>
+                    <Dices className="h-4 w-4 mr-1" />
+                    Gerar 5 Jogos
+                  </>
+                )}
+              </Button>
+            </div>
           </CardTitle>
           <CardDescription>
-            Digite as dezenas ou gere jogos automaticamente
+            Selecione as dezenas clicando nos números abaixo
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-2">
-            <Input
-              placeholder={loteria ? `Dezenas (${loteria.universo_min}-${loteria.universo_max})` : "Dezenas"}
-              value={novoJogoInput}
-              onChange={e => setNovoJogoInput(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && adicionarJogo()}
-            />
-            <Button onClick={adicionarJogo} size="icon">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </div>
+          {loteria && (
+            <>
+              <div className="flex items-center justify-between">
+                <Label className="flex items-center gap-2">
+                  <span>Seu Jogo</span>
+                  <span className="text-xs text-muted-foreground font-normal">
+                    {dezenasSelecionadas.length} / {qtdDezenas}
+                  </span>
+                </Label>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground mr-1">
+                    <Coins className="h-3 w-3 inline mr-0.5" />
+                    R$ {precoAtual.toFixed(2).replace('.', ',')}
+                  </span>
+                </div>
+              </div>
+
+              {dezenasSelecionadas.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-muted/30">
+                  {dezenasSelecionadas.map(d => (
+                    <Badge key={d} variant="secondary" className="text-sm px-2.5 py-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive" onClick={() => toggleDezena(d)}>
+                      {String(d).padStart(2, "0")} <span className="ml-1 text-xs opacity-60">✕</span>
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl border border-muted bg-card/50">
+                <div
+                  className="grid gap-1.5"
+                  style={{
+                    gridTemplateColumns: `repeat(auto-fill, minmax(${(loteria?.universo_max || 99) >= 80 ? "2rem" : "2.5rem"}, 1fr))`,
+                  }}
+                >
+                  {todosNumeros.map(numero => {
+                    const isSelected = dezenasSelecionadas.includes(numero);
+                    const atLimit = !isSelected && dezenasSelecionadas.length >= qtdDezenas;
+                    return (
+                      <button
+                        key={numero}
+                        type="button"
+                        disabled={atLimit}
+                        onClick={() => toggleDezena(numero)}
+                        className={`aspect-square rounded-full text-sm font-bold tabular-nums transition-all duration-150 cursor-pointer flex items-center justify-center ${
+                          isSelected
+                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-110 ring-2 ring-primary/40"
+                            : atLimit
+                              ? "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
+                              : "bg-muted text-foreground hover:bg-primary/15 hover:text-primary hover:scale-110 hover:shadow-md border border-border/50"
+                        }`}
+                      >
+                        {String(numero).padStart(2, "0")}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={limparSelecao}
+                  disabled={dezenasSelecionadas.length === 0}
+                >
+                  <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                  Limpar
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={selecionarAleatorio}
+                >
+                  <Dices className="h-3.5 w-3.5 mr-1" />
+                  Aleatório
+                </Button>
+                <Button
+                  onClick={adicionarJogo}
+                  disabled={dezenasSelecionadas.length < loteria.qtd_dezenas_min}
+                  className="ml-auto"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Adicionar Jogo
+                </Button>
+              </div>
+            </>
+          )}
 
           {jogos.length > 0 && (
-            <div className="space-y-2">
+            <div className="space-y-2 mt-4">
               {jogos.map((jogo, index) => (
                 <div key={index} className="flex items-center justify-between p-2 border rounded-lg">
                   <div className="flex items-center gap-4">
                     <span className="text-sm text-muted-foreground w-8">#{index + 1}</span>
                     <div className="flex gap-1">
                       {jogo.dezenas.map(d => (
-                        <Badge key={d} variant="outline">
+                        <Badge key={d} variant="outline" className="text-xs">
                           {String(d).padStart(2, "0")}
                         </Badge>
                       ))}
@@ -238,6 +476,63 @@ export default function BolaoPage() {
                   >
                     <X className="h-4 w-4" />
                   </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Convite */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Convidar Usuário para o Bolão
+          </CardTitle>
+          <CardDescription>
+            Envie um convite por email para outro usuário do site participar deste bolão.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-2">
+            <Input
+              type="email"
+              placeholder="email@exemplo.com"
+              value={emailConvidado}
+              onChange={e => setEmailConvidado(e.target.value)}
+              className="flex-1"
+            />
+            <Button onClick={handleConvidar} disabled={convidando || jogos.length === 0 || !emailConvidado.trim()}>
+              {convidando ? (
+                <>
+                  <Dices className="h-4 w-4 mr-1 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Users className="h-4 w-4 mr-1" />
+                  Convidar
+                </>
+              )}
+            </Button>
+          </div>
+          {jogos.length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Adicione jogos ao bolão primeiro para poder convidar.
+            </p>
+          )}
+
+          {participantes.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{participantes.length} participante(s) convidado(s)</p>
+              {participantes.map((p, i) => (
+                <div key={i} className="flex items-center justify-between p-2 border rounded-lg">
+                  <div>
+                    <p className="text-sm font-medium">{p.nome}</p>
+                    <p className="text-xs text-muted-foreground">{p.email}</p>
+                  </div>
+                  <Badge variant="outline">{p.cotas} cota(s)</Badge>
                 </div>
               ))}
             </div>

@@ -2,27 +2,30 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, LogIn, LogOut, User, LayoutDashboard, Settings, Bell, RefreshCw, PieChart } from "lucide-react";
+import { Menu, Dices, BarChart3, History, GitCompare, PenTool, Users, BookOpen, LogIn, LogOut, User, LayoutDashboard, Settings, Bell, RefreshCw, PieChart, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/supabase/auth/provider";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { isAdminUser } from "@/lib/admin";
 
 const navItems = [
   { href: "/gerar/megasena", label: "Gerar Jogos", icon: Dices },
+  { href: "/criar-jogo/megasena", label: "Criar Jogo", icon: PenTool },
   { href: "/historico/jogos", label: "Histórico", icon: History },
   { href: "/analise", label: "Análise", icon: BarChart3 },
   { href: "/comparar", label: "Comparar", icon: GitCompare },
-  { href: "/criar-jogo/megasena", label: "Criar Jogo", icon: PenTool },
-  { href: "/bolao", label: "Bolão", icon: Users },
-  { href: "/estrategias", label: "Estratégias", icon: BookOpen },
-  { href: "/sincronizar", label: "Sincronizar", icon: RefreshCw },
   { href: "/estatisticas", label: "Estatísticas", icon: PieChart },
+  { href: "/concursos", label: "Concursos", icon: BookOpen },
+  { href: "/sincronizar", label: "Sincronizar", icon: RefreshCw },
+  { href: "/bolao", label: "Bolão", icon: Users },
 ];
 
 export function Navbar() {
   const [open, setOpen] = useState(false);
-  const { user, isLoading, signOut } = useAuth();
+  const { user, isLoading, signOut, avatarUrl } = useAuth();
+
+  const isAdmin = isAdminUser(user);
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -53,34 +56,64 @@ export function Navbar() {
           {!isLoading && (
             <>
               {user ? (
-                <div className="hidden md:flex items-center gap-2">
-                  <Link href="/notificacoes">
-                    <Button variant="ghost" size="sm">
-                      <Bell className="h-4 w-4 mr-1" />
-                      Notificações
+                <>
+                  <div className="hidden md:flex items-center gap-2">
+                    <Link href="/notificacoes">
+                      <Button variant="ghost" size="sm">
+                        <Bell className="h-4 w-4 mr-1" />
+                        Notificações
+                      </Button>
+                    </Link>
+                    <Link href="/dashboard">
+                      <Button variant="ghost" size="sm">
+                        <LayoutDashboard className="h-4 w-4 mr-1" />
+                        Painel
+                      </Button>
+                    </Link>
+                    <Link href="/configuracoes" className="flex items-center gap-2 rounded-full pl-1 pr-3 py-1 text-sm transition-colors hover:bg-accent">
+                      {avatarUrl ? (
+                        <img
+                          src={avatarUrl}
+                          alt="Foto de perfil"
+                          className="h-9 w-9 rounded-full object-cover border-2 border-primary/40 ring-2 ring-primary/20"
+                        />
+                      ) : (
+                        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary border border-primary/30">
+                          <User className="h-4 w-4" />
+                        </span>
+                      )}
+                      <span className="text-sm font-medium text-foreground">
+                        {user.user_metadata?.nome || user.email?.split("@")[0]}
+                      </span>
+                    </Link>
+                    {isAdmin && (
+                      <Link href="/admin">
+                        <Button variant="ghost" size="sm" className="text-primary">
+                          <ShieldCheck className="h-4 w-4 mr-1" />
+                          Admin
+                        </Button>
+                      </Link>
+                    )}
+                    <Button variant="ghost" size="sm" onClick={signOut}>
+                      <LogOut className="h-4 w-4 mr-1" />
+                      Sair
                     </Button>
+                  </div>
+                  {/* Avatar visível no mobile */}
+                  <Link href="/configuracoes" className="md:hidden">
+                    {avatarUrl ? (
+                      <img
+                        src={avatarUrl}
+                        alt="Foto de perfil"
+                        className="h-9 w-9 rounded-full object-cover border-2 border-primary/40"
+                      />
+                    ) : (
+                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary border border-primary/30">
+                        <User className="h-4 w-4" />
+                      </span>
+                    )}
                   </Link>
-                  <Link href="/dashboard">
-                    <Button variant="ghost" size="sm">
-                      <LayoutDashboard className="h-4 w-4 mr-1" />
-                      Painel
-                    </Button>
-                  </Link>
-                  <Link href="/configuracoes">
-                    <Button variant="ghost" size="sm">
-                      <Settings className="h-4 w-4 mr-1" />
-                      Config
-                    </Button>
-                  </Link>
-                  <span className="text-sm text-muted-foreground flex items-center gap-1">
-                    <User className="h-4 w-4" />
-                    {user.email?.split("@")[0]}
-                  </span>
-                  <Button variant="ghost" size="sm" onClick={signOut}>
-                    <LogOut className="h-4 w-4 mr-1" />
-                    Sair
-                  </Button>
-                </div>
+                </>
               ) : (
                 <Link href="/auth/login" className="hidden md:block">
                   <Button variant="ghost" size="sm">
@@ -150,9 +183,31 @@ export function Navbar() {
                               <Settings className="h-5 w-5" />
                               <span>Configurações</span>
                             </Link>
-                            <div className="flex items-center gap-2 text-sm text-muted-foreground px-3">
-                              <User className="h-4 w-4" />
-                              {user.email}
+                            {isAdmin && (
+                              <Link
+                                href="/admin"
+                                onClick={() => setOpen(false)}
+                                className="flex items-center space-x-3 rounded-md px-3 py-2 text-sm font-medium text-primary transition-colors hover:bg-accent hover:text-accent-foreground"
+                              >
+                                <ShieldCheck className="h-5 w-5" />
+                                <span>Painel Admin</span>
+                              </Link>
+                            )}
+                            <div className="flex items-center gap-2 text-sm px-3 py-1">
+                              {avatarUrl ? (
+                                <img
+                                  src={avatarUrl}
+                                  alt="Foto de perfil"
+                                  className="h-9 w-9 rounded-full object-cover border-2 border-primary/40"
+                                />
+                              ) : (
+                                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/15 text-primary border border-primary/30">
+                                  <User className="h-4 w-4" />
+                                </span>
+                              )}
+                              <span className="font-medium text-foreground">
+                                {user.user_metadata?.nome || user.email?.split("@")[0]}
+                              </span>
                             </div>
                             <button
                               onClick={() => {

@@ -70,21 +70,54 @@ export default function ConcursosPage() {
   // Auto-sync first batch on first visit if no concursos
   useEffect(() => {
     if (!loading && concursos.length === 0 && !syncing) {
-      handleSyncBatch();
+      handleSyncBatch(100);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  const handleSyncBatch = async () => {
+  const handleSyncBatch = async (alvo: number | string = 100) => {
     if (!loteria) return;
     setSyncing(true);
     setSyncProgress({ atual: 0, total: 0, salvos: 0, erros: 0 });
 
     try {
-      // Find last concurso from current data or start from 1
-      const ultimoConcurso = concursos.length > 0 ? concursos[0].numero_concurso : 0;
+      if (alvo === "todos") {
+        // Sincroniza o histórico COMPLETO desta loteria em uma chamada (bulk)
+        const res = await fetch("/api/sync/batch-completo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: loteriaSlug }),
+        });
+        const data = await res.json();
+        const resultadoLoteria = data.resultados?.[loteriaSlug];
+        setSyncProgress({
+          atual: data.totalNovos || 0,
+          total: (data.totalNovos || 0) + (data.totalExistentes || 0),
+          salvos: resultadoLoteria?.novos || 0,
+          erros: resultadoLoteria?.erros || 0,
+        });
+        fetchConcursos();
+        setSyncing(false);
+        return;
+      }
+
+      let ultimoConcurso = concursos.length > 0 ? concursos[0].numero_concurso : 0;
+      let qtdAlvo: number;
+
+      if (alvo === "completarer") {
+        qtdAlvo = 100000;
+      } else {
+        qtdAlvo = Number(alvo);
+      }
+
+      if (qtdAlvo <= 0) {
+        setSyncing(false);
+        fetchConcursos();
+        return;
+      }
+
       const start = ultimoConcurso + 1;
-      const targetConcurso = Math.min(start + 49, ultimoConcurso + 100);
+      const targetConcurso = Math.min(start + qtdAlvo - 1, start + 9999);
 
       const res = await fetch(`/api/sync/batch/${loteriaSlug}`, {
         method: "POST",
@@ -117,7 +150,16 @@ export default function ConcursosPage() {
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return "—";
-    return new Date(dateStr).toLocaleDateString("pt-BR");
+    // Aceita DD/MM/YYYY e ISO (YYYY-MM-DD)
+    let d: Date;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(dateStr)) {
+      const [dd, mm, yyyy] = dateStr.split("/").map(Number);
+      d = new Date(yyyy, mm - 1, dd);
+    } else {
+      d = new Date(dateStr);
+    }
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString("pt-BR");
   };
 
   return (
@@ -157,7 +199,7 @@ export default function ConcursosPage() {
       </div>
 
       <div className="flex items-center gap-3 mb-6">
-        <Button onClick={handleSyncBatch} disabled={syncing} variant="outline">
+        <Button onClick={() => handleSyncBatch(100)} disabled={syncing} variant="outline">
           {syncing ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -169,6 +211,10 @@ export default function ConcursosPage() {
               Baixar Próximos 100
             </>
           )}
+        </Button>
+        <Button onClick={() => handleSyncBatch("todos")} disabled={syncing} variant="outline">
+          <Download className="h-4 w-4 mr-2" />
+          Baixar Todos
         </Button>
         <Button onClick={fetchConcursos} disabled={loading} variant="ghost" size="sm">
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
@@ -258,46 +304,60 @@ export default function ConcursosPage() {
                               </Button>
                             }
                           />
-                          <SheetContent>
+                          <SheetContent className="w-full sm:max-w-md">
                             <SheetHeader>
-                              <SheetTitle>Concurso #{c.numero_concurso}</SheetTitle>
-                            </SheetHeader>
-                            <div className="mt-6 space-y-4">
-                              <div>
-                                <p className="text-sm text-muted-foreground mb-2">Data do Sorteio</p>
-                                <p className="font-medium">{formatDate(c.data_sorteio)}</p>
+                              <div className="flex items-center justify-between pr-6">
+                                <SheetTitle className="text-xl font-bold">
+                                  Concurso #{c.numero_concurso}
+                                </SheetTitle>
+                                <Badge variant="outline">{loteria?.nome}</Badge>
                               </div>
-                              <div>
-                                <p className="text-sm text-muted-foreground mb-2">Dezenas Sorteadas</p>
+                            </SheetHeader>
+                            <div className="mt-6 space-y-6 px-1">
+                              <div className="rounded-xl border bg-card/60 p-4">
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Data do Sorteio</p>
+                                <p className="text-lg font-semibold capitalize">{formatDate(c.data_sorteio)}</p>
+                              </div>
+                              <div className="rounded-xl border bg-card/60 p-4">
+                                <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Dezenas Sorteadas</p>
                                 <div className="flex flex-wrap gap-2">
                                   {(Array.isArray(c.dezenas_sorteadas) ? c.dezenas_sorteadas : []).map(d => (
                                     <span
                                       key={d}
-                                      className="inline-flex items-center justify-center h-10 min-w-[2.5rem] rounded-full bg-primary/10 text-primary text-sm font-bold border border-primary/20"
+                                      className="inline-flex items-center justify-center h-11 w-11 rounded-full bg-primary/10 text-primary text-base font-bold border border-primary/20 shadow-sm"
                                     >
                                       {String(d).padStart(2, "0")}
                                     </span>
                                   ))}
                                 </div>
                               </div>
-                              <div>
-                                <p className="text-sm text-muted-foreground mb-2">Acumulou</p>
-                                <Badge className={c.acumulou ? "bg-emerald-500/15 text-emerald-600" : ""}>
-                                  {c.acumulou ? "Sim" : "Não"}
-                                </Badge>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="rounded-xl border bg-card/60 p-4">
+                                  <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Acumulou</p>
+                                  {c.acumulou ? (
+                                    <Badge className="bg-emerald-500/15 text-emerald-600 border-emerald-500/20 mt-1">Sim</Badge>
+                                  ) : (
+                                    <Badge variant="secondary" className="mt-1">Não</Badge>
+                                  )}
+                                </div>
+                                {c.valor_acumulado ? (
+                                  <div className="rounded-xl border bg-card/60 p-4">
+                                    <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Acumulado</p>
+                                    <p className="text-lg font-bold text-emerald-600">{formatCurrency(c.valor_acumulado)}</p>
+                                  </div>
+                                ) : null}
                               </div>
-                              {c.valor_acumulado && (
-                                <div>
-                                  <p className="text-sm text-muted-foreground mb-2">Valor Acumulado</p>
-                                  <p className="text-lg font-bold text-emerald-600">{formatCurrency(c.valor_acumulado)}</p>
+                              {c.valor_estimado_proximo ? (
+                                <div className="rounded-xl border bg-primary/5 p-4">
+                                  <p className="text-xs uppercase tracking-wider text-muted-foreground mb-1">Próximo Sorteio (Estimativa)</p>
+                                  <p className="text-2xl font-bold text-primary">{formatCurrency(c.valor_estimado_proximo)}</p>
                                 </div>
-                              )}
-                              {c.valor_estimado_proximo && (
-                                <div>
-                                  <p className="text-sm text-muted-foreground mb-2">Próximo Sorteio (Estimativa)</p>
-                                  <p className="font-medium">{formatCurrency(c.valor_estimado_proximo)}</p>
-                                </div>
-                              )}
+                              ) : null}
+                              <div className="rounded-xl border bg-muted/30 p-4 text-center">
+                                <p className="text-xs text-muted-foreground capitalize">
+                                  {formatDate(c.data_sorteio)}
+                                </p>
+                              </div>
                             </div>
                           </SheetContent>
                         </Sheet>

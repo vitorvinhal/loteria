@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { GitCompare, CheckCircle2, XCircle, Trophy, BarChart3, Loader2 } from "lucide-react";
+import { GitCompare, CheckCircle2, XCircle, Trophy, BarChart3, Loader2, User } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
 import type { Loteria, Concurso } from "@/types";
 
@@ -33,7 +34,9 @@ interface LoteFromAPI {
   loteria: string;
   nome: string;
   criado_em: string;
-  jogos: { id: string; dezenas: number[]; score: number | null }[];
+  criado_por: string | null;
+  criador_avatar_url: string | null;
+  jogos: { id: string; dezenas: number[]; score: number | null; nome?: string | null }[];
 }
 
 function calcularEstatisticas(dezenas: number[]) {
@@ -105,6 +108,7 @@ function compararJogo(dezenas: number[], resultado: Concurso, loteria: Loteria, 
 type ModoComparacao = "manual" | "lote";
 
 export default function CompararPage() {
+  const searchParams = useSearchParams();
   const [loteriaSlug, setLoteriaSlug] = useState("lotofacil");
   const [modoComparacao, setModoComparacao] = useState<ModoComparacao>("manual");
   const [dezenasSelecionadas, setDezenasSelecionadas] = useState<number[]>([]);
@@ -115,7 +119,11 @@ export default function CompararPage() {
   const [lotes, setLotes] = useState<LoteFromAPI[]>([]);
   const [loteSelecionadoId, setLoteSelecionadoId] = useState("");
   const [carregandoLotes, setCarregandoLotes] = useState(false);
-
+  const [jogoSelecionadoId, setJogoSelecionadoId] = useState<string>("");
+  const [loteDaUrl, setLoteDaUrl] = useState<string | null>(null);
+  const [filtroPeriodo, setFiltroPeriodo] = useState<"todos" | "7" | "30">("todos");
+  const [filtroLoteria, setFiltroLoteria] = useState<string>('');
+  const [filtroNome, setFiltroNome] = useState<string>('');
   const loteria = LOTERIAS.find((l) => l.slug === loteriaSlug) || LOTERIAS[0];
 
   const carregarLotes = useCallback(async () => {
@@ -141,27 +149,113 @@ export default function CompararPage() {
 
   useEffect(() => { buscarResultado(); setComparacoes([]); setDezenasSelecionadas([]); setLoteSelecionadoId(""); }, [buscarResultado]);
 
+  useEffect(() => {
+    const loteId = searchParams.get("loteId");
+    const loteriaParam = searchParams.get("loteria");
+    if (loteId) {
+      setLoteDaUrl(loteId);
+      setModoComparacao("lote");
+      if (loteriaParam) setLoteriaSlug(loteriaParam);
+    }
+  }, [searchParams]);
+
+  // Compara o lote vindo da URL automaticamente quando os dados carregam
+  useEffect(() => {
+    if (!loteDaUrl || !resultado) return;
+    if (carregandoLotes) return;
+    const lote = lotes.find((l) => l.id === loteDaUrl);
+    if (!lote) return;
+    const loteLoteria = LOTERIAS.find((x) => x.id === lote.loteria) || loteria;
+    setLoteriaSlug(loteLoteria.slug);
+    setModoComparacao("lote");
+    setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8))));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loteDaUrl, resultado, carregandoLotes, lotes]);
+
+  const compararLoteInteiro = async (loteId: string) => {
+    const lote = lotes.find((l) => l.id === loteId);
+    if (!lote) return;
+    const loteLoteria = LOTERIAS.find((x) => x.id === lote.loteria) || loteria;
+    setLoteriaSlug(loteLoteria.slug);
+    setModoComparacao("lote");
+    setLoteSelecionadoId(loteId);
+    // Busca o resultado da loteria do lote e compara
+    setCarregando(true);
+    try {
+      const res = await fetch(`/api/sync/${loteLoteria.slug}`);
+      if (res.ok) {
+        const data = await res.json();
+        const r = data.concurso;
+        setResultado(r);
+        if (r) {
+          setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, r, loteLoteria, j.nome || j.id.slice(0, 8))));
+        }
+      }
+    } catch { /* ignora */ } finally {
+      setCarregando(false);
+    }
+  };
+
   const toggleDezena = (n: number) => {
     setDezenasSelecionadas(prev => prev.includes(n) ? prev.filter(x => x !== n) : [...prev, n]);
   };
 
-  const handleComparar = () => {
-    if (!resultado) return;
-    if (modoComparacao === "manual") {
-      if (dezenasSelecionadas.length === 0) return;
-      setComparacoes([compararJogo(dezenasSelecionadas.sort((a, b) => a - b), resultado, loteria)]);
-    } else {
-      const lote = lotes.find((l) => l.id === loteSelecionadoId && l.loteria === loteria.id);
-      if (!lote || lote.jogos.length === 0) return;
-      setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteria, j.id.slice(0, 8))));
-    }
-  };
+    const handleComparar = () => {
+      if (!resultado) return;
+      if (modoComparacao === "manual") {
+        if (dezenasSelecionadas.length === 0) return;
+        setComparacoes([compararJogo(dezenasSelecionadas.sort((a, b) => a - b), resultado, loteria)]);
+      } else {
+        if (jogoSelecionadoId && jogarSelecionado) {
+          const jogoLoteria = LOTERIAS.find((x) => x.id === jogarSelecionado.loteria || x.slug === jogarSelecionado.loteria) || loteria;
+          setComparacoes([compararJogo(jogarSelecionado.dezenas, resultado, jogoLoteria, jogarSelecionado.nome || jogarSelecionado.id.slice(0, 8))]);
+          return;
+        }
+        const lote = lotes.find((l) => l.id === loteSelecionadoId);
+        if (!lote || lote.jogos.length === 0) return;
+        const loteLoteria = LOTERIAS.find((x) => x.id === lote.loteria) || loteria;
+        const comps = lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8)));
+        comps.sort((a, b) => b.percentual - a.percentual);
+        setComparacoes(comps);
+      }
+    };
+
 
   const melhorComparacao = comparacoes.length > 0
     ? comparacoes.reduce((best, curr) => (curr.percentual > best.percentual ? curr : best), comparacoes[0])
     : null;
 
-  const lotesDaLoteria = lotes.filter((l) => l.loteria === loteria.id);
+  const lotesDaLoteria = lotes.filter((l) =>
+    (() => {
+      if (filtroPeriodo === "todos") return true;
+      const dias = parseInt(filtroPeriodo, 10);
+      return new Date(l.criado_em).getTime() >= Date.now() - dias * 86400000;
+    })()
+  );
+
+  const jogosDaLoteria = lotesDaLoteria.flatMap((lote) =>
+    lote.jogos.map((j) => ({
+      id: j.id,
+      loteId: lote.id,
+      loteria: lote.loteria,
+      dezenas: j.dezenas,
+      score: j.score,
+      nome: j.nome || null,
+      criado_em: lote.criado_em,
+      criado_por: lote.criado_por || null,
+      criador_avatar_url: lote.criador_avatar_url || null,
+    }))
+  );
+
+  const formatarData = (dataISO: string) => {
+    const d = new Date(dataISO);
+    if (isNaN(d.getTime())) return "";
+    const data = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    const dia = d.toLocaleDateString("pt-BR", { weekday: "long" });
+    return `${data} · ${dia}`;
+  };
+
+  const jogarSelecionado = jogosDaLoteria.find(j => j.id === jogoSelecionadoId);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -223,7 +317,7 @@ export default function CompararPage() {
                   </div>
                 )}
                 <div className="p-3 rounded-xl border border-muted bg-card/50">
-                  <div className="grid grid-cols-8 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
+                  <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
                     {Array.from({ length: loteria.universo_max - loteria.universo_min + 1 }, (_, i) => loteria.universo_min + i).map(numero => {
                       const isSelected = dezenasSelecionadas.includes(numero);
                       const atLimit = !isSelected && dezenasSelecionadas.length >= loteria.qtd_dezenas_padrao;
@@ -245,22 +339,91 @@ export default function CompararPage() {
 
             {modoComparacao === "lote" && (
               <div className="space-y-2">
-                <Label>Lote</Label>
+                <Label className="flex items-center justify-between">
+                  <span>Lotes de Jogos Salvos</span>
+                  <span className="text-xs text-muted-foreground font-normal">{jogosDaLoteria.length} jogo(s)</span>
+                </Label>
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/40 seg-filter">
+                  {([["todos", "Tudo"], ["7", "7 dias"], ["30", "30 dias"]] as const).map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setFiltroPeriodo(val)}
+                      className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                        filtroPeriodo === val ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {carregandoLotes ? (
                   <p className="text-sm text-muted-foreground">Carregando...</p>
-                ) : lotesDaLoteria.length > 0 ? (
-                  <Select value={loteSelecionadoId} onValueChange={(v) => v && setLoteSelecionadoId(v)}>
-                    <SelectTrigger className="w-full h-11"><SelectValue placeholder="Selecione um lote" /></SelectTrigger>
-                    <SelectContent className="z-50">
-                      {lotesDaLoteria.map((lote) => (
-                        <SelectItem key={lote.id} value={lote.id} className="py-2.5">
-                          Lote {lote.id.slice(0, 8)} ({lote.jogos.length} jogos)
-                        </SelectItem>
+                ) : jogosDaLoteria.length > 0 ? (
+                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                    {lotesDaLoteria
+                      .sort((a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime())
+                      .map((lote) => (
+                        <div key={lote.id} className="border rounded-lg overflow-hidden">
+                          <div className="flex items-center gap-2 p-2 bg-muted/30 border-b">
+                            {lote.criador_avatar_url ? (
+                              <img
+                                src={lote.criador_avatar_url}
+                                alt="Foto"
+                                className="h-7 w-7 rounded-full object-cover border border-border shrink-0"
+                              />
+                            ) : (
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                                <User className="h-3.5 w-3.5" />
+                              </span>
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-semibold truncate">{lote.criado_por || "Anônimo"}</p>
+                              <p className="text-[10px] text-muted-foreground capitalize">{formatarData(lote.criado_em)} · {lote.jogos.length} jogo(s)</p>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => compararLoteInteiro(lote.id)}
+                              className="shrink-0"
+                            >
+                              <GitCompare className="h-3.5 w-3.5 mr-1" />
+                              Comparar lote
+                            </Button>
+                          </div>
+                          <div className="divide-y">
+                            {lote.jogos.map((j) => (
+                              <button
+                                key={j.id}
+                                type="button"
+                                onClick={() => setJogoSelecionadoId(j.id)}
+                                className={`w-full text-left px-3 py-2 transition-colors cursor-pointer ${
+                                  jogoSelecionadoId === j.id ? "bg-primary/10" : "hover:bg-accent/50"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`text-sm font-medium truncate ${jogoSelecionadoId === j.id ? "text-primary" : ""}`}>
+                                    {j.nome || `Jogo ${j.id.slice(0, 8)}`}
+                                  </span>
+                                  {j.score !== null && (
+                                    <Badge variant={j.score >= 80 ? "default" : "secondary"} className="text-xs shrink-0">
+                                      {j.score}
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {j.dezenas.slice(0, 8).map(d => (
+                                    <span key={d} className="text-[10px] font-mono bg-muted rounded px-1">{String(d).padStart(2, "0")}</span>
+                                  ))}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                       ))}
-                    </SelectContent>
-                  </Select>
+                  </div>
                 ) : (
-                  <p className="text-sm text-muted-foreground">Nenhum lote disponível.</p>
+                  <p className="text-sm text-muted-foreground">Nenhum jogo salvo para esta loteria.</p>
                 )}
               </div>
             )}
@@ -292,7 +455,7 @@ export default function CompararPage() {
         </Card>
       </div>
 
-      <Button onClick={handleComparar} className="mb-6" disabled={carregando || (modoComparacao === "manual" ? dezenasSelecionadas.length === 0 : !loteSelecionadoId)}>
+      <Button onClick={handleComparar} className="mb-6" disabled={carregando || (modoComparacao === "manual" ? dezenasSelecionadas.length === 0 : !jogoSelecionadoId && !loteSelecionadoId)}>
         <GitCompare className="h-4 w-4 mr-2" /> Comparar
       </Button>
 

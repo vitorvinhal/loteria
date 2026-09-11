@@ -48,6 +48,10 @@ export function calcularScore(
     scoreExclusao * pesos.exclusao_padroes +
     scoreAderencia * pesos.aderencia_estrategia;
 
+  // Recalibração: amplifica scores para tornar 80-95 alcançáveis com bons candidatos
+  // mantendo a ordem relativa (melhores candidatos continuam na frente)
+  const totalCalibrado = 45 + total * 56;
+
   return {
     frequencia: Math.round(scoreFrequencia * 100) / 100,
     atraso: Math.round(scoreAtraso * 100) / 100,
@@ -57,13 +61,17 @@ export function calcularScore(
     exclusao_padroes: Math.round(scoreExclusao * 100) / 100,
     aderencia_estrategia: Math.round(scoreAderencia * 100) / 100,
     pesos,
-    total: Math.round(Math.min(100, Math.max(0, total * 100))),
+    total: Math.round(Math.min(100, Math.max(0, totalCalibrado))),
   };
 }
 
 function calcularScoreFrequencia(dezenas: number[], estatisticas: Estatisticas): number {
   let somaFrequencia = 0;
   let count = 0;
+
+  const maxFrequencia = estatisticas.frequencia_percentual.size > 0
+    ? Math.max(...Array.from(estatisticas.frequencia_percentual.values()))
+    : 0;
 
   dezenas.forEach(dezena => {
     const freq = estatisticas.frequencia_percentual.get(dezena) || 0;
@@ -72,8 +80,11 @@ function calcularScoreFrequencia(dezenas: number[], estatisticas: Estatisticas):
   });
 
   if (count === 0) return 0;
+
+  if (maxFrequencia <= 0) return 0.5;
+
   const mediaFrequencia = somaFrequencia / count;
-  return Math.min(1, mediaFrequencia / 10);
+  return Math.min(1, mediaFrequencia / maxFrequencia);
 }
 
 function calcularScoreAtraso(dezenas: number[], estatisticas: Estatisticas): number {

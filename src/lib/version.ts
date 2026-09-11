@@ -1,4 +1,4 @@
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = "2.7.5";
 export const APP_NAME = "Loterias CAIXA - Gerador Inteligente";
 
 export interface VersionInfo {

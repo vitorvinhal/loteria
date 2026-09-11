@@ -19,6 +19,9 @@ export async function GET() {
 
     if (error) {
       console.error("[API/apostas] Erro ao buscar apostas:", error);
+      if (error.message?.includes("does not exist") || error.code === "42P01") {
+        return NextResponse.json({ apostas: [], setupRequired: true });
+      }
       return NextResponse.json({ error: "Erro ao buscar apostas" }, { status: 500 });
     }
 
@@ -68,6 +71,9 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error("[API/apostas] Erro ao salvar aposta:", error);
+      if (error.message?.includes("does not exist") || error.code === "42P01") {
+        return NextResponse.json({ error: "Tabela apostas não existe. Execute a migração no painel do Supabase.", setupRequired: true }, { status: 503 });
+      }
       return NextResponse.json({ error: "Erro ao salvar aposta" }, { status: 500 });
     }
 

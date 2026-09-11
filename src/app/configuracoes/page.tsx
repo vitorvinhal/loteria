@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,18 +8,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Settings, Save, Trash2, Shield, Bell, User, CheckCircle2 } from "lucide-react";
+import { Settings, Save, Trash2, Shield, Bell, User, CheckCircle2, Camera, X } from "lucide-react";
 import { useAuth } from "@/lib/supabase/auth/provider";
 
 export default function ConfiguracoesPage() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, avatarUrl, refreshAvatar } = useAuth();
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [nome, setNome] = useState("");
   const [email, setEmail] = useState("");
   const [notificacoesSorteio, setNotificacoesSorteio] = useState(true);
   const [notificacoesScore, setNotificacoesScore] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [mensagem, setMensagem] = useState<{ tipo: "sucesso" | "erro"; texto: string } | null>(null);
 
   useEffect(() => {
@@ -36,6 +38,96 @@ export default function ConfiguracoesPage() {
       setNotificacoesScore(user.user_metadata?.notificacoes_score !== false);
     }
   }, [user]);
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setMensagem({ tipo: "erro", texto: "Envie um arquivo de imagem (JPG, PNG ou WebP)." });
+      return;
+    }
+
+    setIsUploading(true);
+    setMensagem(null);
+
+    try {
+      const imagem = await compressImage(file);
+      if (!imagem) {
+        throw new Error("Falha ao processar a imagem");
+      }
+
+      const response = await fetch("/api/usuario/foto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imagem }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        await refreshAvatar();
+        setMensagem({ tipo: "sucesso", texto: "Foto atualizada com sucesso!" });
+      } else {
+        setMensagem({ tipo: "erro", texto: data.error || "Erro ao fazer upload da foto." });
+      }
+    } catch {
+      setMensagem({ tipo: "erro", texto: "Erro ao fazer upload da foto. Tente novamente." });
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const compressImage = (file: File): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const max = 180;
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(null); return; }
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", 0.7));
+        };
+        img.onerror = () => resolve(null);
+        img.src = reader.result as string;
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleRemovePhoto = async () => {
+    if (!confirm("Tem certeza que deseja remover sua foto de perfil?")) return;
+
+    setIsUploading(true);
+    setMensagem(null);
+
+    try {
+      const response = await fetch("/api/usuario/foto", { method: "DELETE" });
+
+      if (response.ok) {
+        await refreshAvatar();
+        setMensagem({ tipo: "sucesso", texto: "Foto removida com sucesso!" });
+      } else {
+        setMensagem({ tipo: "erro", texto: "Erro ao remover foto." });
+      }
+    } catch {
+      setMensagem({ tipo: "erro", texto: "Erro ao remover foto." });
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleSalvar = async () => {
     setIsSaving(true);
@@ -133,6 +225,67 @@ export default function ConfiguracoesPage() {
           <CardDescription>Informações básicas da sua conta</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              {avatarUrl ? (
+                <img
+                  src={avatarUrl}
+                  alt="Foto de perfil"
+                  className="w-20 h-20 rounded-full object-cover border-2 border-primary"
+                />
+              ) : (
+                <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center border-2 border-dashed">
+                  <User className="h-8 w-8 text-muted-foreground" />
+                </div>
+              )}
+              <Button
+                size="icon"
+                variant="outline"
+                className="absolute -bottom-1 -right-1 h-7 w-7 rounded-full"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+              >
+                <Camera className="h-3 w-3" />
+              </Button>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Foto de perfil</p>
+              <p className="text-xs text-muted-foreground mb-2">
+                JPG, PNG ou WebP. Máx. 2MB.
+              </p>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                >
+                  {isUploading ? "Enviando..." : "Alterar foto"}
+                </Button>
+                {avatarUrl && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRemovePhoto}
+                    disabled={isUploading}
+                  >
+                    <X className="h-3 w-3 mr-1" />
+                    Remover
+                  </Button>
+                )}
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handlePhotoUpload}
+              className="hidden"
+            />
+          </div>
+
+          <Separator />
+
           <div className="space-y-2">
             <Label htmlFor="nome">Nome</Label>
             <Input

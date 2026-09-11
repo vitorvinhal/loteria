@@ -88,7 +88,7 @@
   --foreground: oklch(0.97 0 0);
   --card: oklch(0.16 0.015 280);
   --card-foreground: oklch(0.97 0 0);
-  --popover: oklch(0.16 0.015 280);
+  --popover: oklch(0.2 0.02 280);
   --popover-foreground: oklch(0.97 0 0);
   --primary: oklch(0.62 0.22 290);
   --primary-foreground: oklch(0.98 0 0);
@@ -99,7 +99,7 @@
   --accent: oklch(0.55 0.2 290);
   --accent-foreground: oklch(0.98 0 0);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.3 0.02 280);
+  --border: oklch(0.35 0.02 280);
   --input: oklch(0.28 0.02 280);
   --ring: oklch(0.62 0.22 290);
   --chart-1: oklch(0.62 0.22 290);
@@ -127,4 +127,69 @@
   html {
     @apply font-sans;
   }
+
+  /* Remove nativos spinners dos inputs numéricos (botões +/- customizados) */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+}
+
+/* ============ Ajustes Mobile ============ */
+@media (max-width: 640px) {
+  .container {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  /* Evita overflow horizontal indesejado */
+  html, body {
+    overflow-x: hidden;
+  }
+
+  /* Tabelas com rolagem horizontal no mobile */
+  .overflow-x-auto {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Inputs numericos centrais menores */
+  input[type="number"].w-16,
+  input[type="number"].h-10 {
+    width: 3.25rem;
+  }
+
+  /* Botões de +/- menores no mobile */
+  button.h-10.w-10.rounded-full {
+    height: 2.25rem;
+    width: 2.25rem;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  /* Filtros segmentados com rolagem horizontal (classe dedicada,
+     sem afetar outros componentes w-fit) */
+  .seg-filter {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+}
+
+/* Garante que imgs não estourem containers */
+img {
+  max-width: 100%;
+}
+
+/* Wrap seguro para flex containers de ações */
+.min-w-0 {
+  min-width: 0;
 }

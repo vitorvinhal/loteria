@@ -1,36 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClientInstance } from "@/lib/supabase/server";
+import { getSession, getSupabaseWithAuth } from "@/lib/supabase/auth/server";
 
 export async function PUT(request: NextRequest) {
   try {
-    const supabase = await createServerClientInstance();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    const session = await getSession();
+    if (!session?.user) {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
     }
 
     const body = await request.json();
-    const { nome, notificacoes_sorteio, notificacoes_score } = body;
+    const { nome, notificacoes_sorteio, notificacoes_score, tema } = body;
 
-    const updates: Record<string, unknown> = {};
-    if (nome && typeof nome === "string" && nome.trim().length > 0) {
-      updates.data = { ...user.user_metadata, nome: nome.trim() };
-    }
+    const supabase = await getSupabaseWithAuth();
 
-    if (typeof notificacoes_sorteio === "boolean" || typeof notificacoes_score === "boolean") {
-      const existingMeta = user.user_metadata || {};
-      updates.data = {
+    const existingMeta = session.user.user_metadata || {};
+    const updates: Record<string, unknown> = {
+      data: {
         ...existingMeta,
         ...(nome && typeof nome === "string" ? { nome: nome.trim() } : {}),
-        notificacoes_sorteio: typeof notificacoes_sorteio === "boolean" ? notificacoes_sorteio : existingMeta.notificacoes_sorteio,
-        notificacoes_score: typeof notificacoes_score === "boolean" ? notificacoes_score : existingMeta.notificacoes_score,
-      };
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: "Nenhum dado para atualizar" }, { status: 400 });
-    }
+        ...(typeof notificacoes_sorteio === "boolean" ? { notificacoes_sorteio } : {}),
+        ...(typeof notificacoes_score === "boolean" ? { notificacoes_score } : {}),
+        ...(typeof tema === "string" && ["light", "dark", "system"].includes(tema) ? { tema } : {}),
+      },
+    };
 
     const { error } = await supabase.auth.updateUser(updates);
 

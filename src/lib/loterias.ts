@@ -12,7 +12,7 @@ export const LOTERIAS: Loteria[] = [
     qtd_dezenas_padrao: 15,
     dias_sorteio: ['domingo'],
     horario_sorteio: '11:00',
-    preco_aposta_base: 2.50,
+    preco_aposta_base: 3.00,
     regras_vitoria: [
       { acertos_min: 11, acertos_max: 11, descricao: '11 acertos - Prêmio menor' },
       { acertos_min: 12, acertos_max: 12, descricao: '12 acertos - Prêmio intermediário' },
@@ -33,7 +33,7 @@ export const LOTERIAS: Loteria[] = [
     qtd_dezenas_padrao: 50,
     dias_sorteio: ['terca', 'sexta'],
     horario_sorteio: '20:00',
-    preco_aposta_base: 2.50,
+    preco_aposta_base: 3.50,
     regras_vitoria: [
       { acertos_min: 0, acertos_max: 0, descricao: '0 acertos - Prêmio especial (nenhum número)' },
       { acertos_min: 15, acertos_max: 15, descricao: '15 acertos - Prêmio menor' },
@@ -75,7 +75,7 @@ export const LOTERIAS: Loteria[] = [
     qtd_dezenas_padrao: 5,
     dias_sorteio: ['domingo'],
     horario_sorteio: '11:00',
-    preco_aposta_base: 2.00,
+    preco_aposta_base: 2.50,
     regras_vitoria: [
       { acertos_min: 2, acertos_max: 2, descricao: '2 acertos - Prêmio menor' },
       { acertos_min: 3, acertos_max: 3, descricao: '3 acertos - Prêmio intermediário' },
@@ -113,7 +113,7 @@ export const LOTERIAS: Loteria[] = [
     qtd_dezenas_padrao: 10,
     dias_sorteio: ['domingo'],
     horario_sorteio: '11:00',
-    preco_aposta_base: 2.00,
+    preco_aposta_base: 4.50,
     regras_vitoria: [
       { acertos_min: 3, acertos_max: 3, descricao: '3 acertos - Prêmio menor' },
       { acertos_min: 4, acertos_max: 4, descricao: '4 acertos - Prêmio intermediário' },
@@ -134,7 +134,7 @@ export const LOTERIAS: Loteria[] = [
     qtd_dezenas_padrao: 7,
     dias_sorteio: ['domingo'],
     horario_sorteio: '11:00',
-    preco_aposta_base: 2.00,
+    preco_aposta_base: 3.50,
     regras_vitoria: [
       { acertos_min: 4, acertos_max: 4, descricao: '4 acertos + Mês da Sorte - Prêmio menor' },
       { acertos_min: 5, acertos_max: 5, descricao: '5 acertos + Mês da Sorte - Prêmio intermediário' },
@@ -154,7 +154,7 @@ export const LOTERIAS: Loteria[] = [
     qtd_dezenas_padrao: 6,
     dias_sorteio: ['domingo'],
     horario_sorteio: '11:00',
-    preco_aposta_base: 5.00,
+    preco_aposta_base: 6.00,
     regras_vitoria: [
       { acertos_min: 6, acertos_max: 6, descricao: '6 acertos + 2 Trevos - Prêmio máximo' },
       { acertos_min: 6, acertos_max: 6, descricao: '6 acertos + 1 Trevo - Prêmio intermediário' },
@@ -173,7 +173,7 @@ export const LOTERIAS: Loteria[] = [
     qtd_dezenas_padrao: 7,
     dias_sorteio: ['sexta'],
     horario_sorteio: '20:00',
-    preco_aposta_base: 2.00,
+    preco_aposta_base: 2.50,
     regras_vitoria: [
       { acertos_min: 3, acertos_max: 3, descricao: '3 colunas certas - Prêmio menor' },
       { acertos_min: 4, acertos_max: 4, descricao: '4 colunas certas - Prêmio intermediário' },

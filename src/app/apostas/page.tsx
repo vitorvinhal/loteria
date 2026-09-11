@@ -159,7 +159,7 @@ export default function ApostasPage() {
                   </div>
                 )}
                 <div className="p-3 rounded-xl border border-muted bg-card/50">
-                  <div className="grid grid-cols-8 sm:grid-cols-10 gap-1.5">
+                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-1.5">
                     {Array.from({ length: loteria.universo_max - loteria.universo_min + 1 }, (_, i) => loteria.universo_min + i).map(numero => {
                       const isSelected = dezenasSelecionadas.includes(numero);
                       const atLimit = !isSelected && dezenasSelecionadas.length >= loteria.qtd_dezenas_padrao;

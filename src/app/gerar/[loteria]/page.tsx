@@ -31,6 +31,8 @@ import {
   Cpu,
   CheckCircle2,
   Loader2,
+  Coins,
+  Save,
 } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
 import { getEstrategiasAtivas } from "@/modules/strategies";
@@ -80,6 +82,38 @@ const LOTERIA_ICONS: Record<string, string> = {
   supersete: "7️⃣",
 };
 
+// Tabela de preços por quantidade de dezenas (Lotofácil 2026)
+const PRECOS_POR_QTD: Record<string, Record<number, number>> = {
+  lotofacil: { 15: 3.00, 16: 48.00, 17: 408.00, 18: 2448.00, 19: 11628.00, 20: 46512.00 },
+  megasena: { 6: 5.00, 7: 35.00, 8: 140.00, 9: 420.00, 10: 1050.00, 11: 2310.00, 12: 4620.00 },
+  quina: { 5: 2.50, 6: 15.00, 7: 52.50, 8: 126.00, 9: 210.00, 10: 252.00 },
+  duplasena: { 6: 2.50, 7: 17.50, 8: 70.00, 9: 210.00, 10: 525.00 },
+  diadesorte: { 7: 3.50, 8: 14.00, 9: 42.00, 10: 105.00, 11: 231.00 },
+  maismilionaria: { 6: 6.00, 7: 42.00, 8: 168.00 },
+  lotomania: { 50: 3.50 },
+  timemania: { 10: 4.50 },
+  supersete: { 7: 2.50 },
+};
+
+function getPreco(slug: string, qtd: number): number {
+  const tabela = PRECOS_POR_QTD[slug];
+  if (tabela && tabela[qtd] !== undefined) return tabela[qtd];
+  const loteria = LOTERIAS.find(l => l.slug === slug);
+  return loteria?.preco_aposta_base || 0;
+}
+
+function getOpcoesQtd(slug: string): number[] {
+  const tabela = PRECOS_POR_QTD[slug];
+  if (tabela) return Object.keys(tabela).map(Number).sort((a, b) => a - b);
+  const loteria = LOTERIAS.find(l => l.slug === slug);
+  if (!loteria) return [];
+  const opcoes: number[] = [];
+  for (let i = loteria.qtd_dezenas_min; i <= loteria.qtd_dezenas_max; i++) {
+    opcoes.push(i);
+  }
+  return opcoes;
+}
+
 const DIAS_SEMANA: Record<string, string> = {
   domingo: "Dom",
   segunda: "Seg",
@@ -125,6 +159,15 @@ export default function GerarPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [loteId, setLoteId] = useState<string | null>(null);
   const [generatingProgress, setGeneratingProgress] = useState(0);
+  const [qtdDezenas, setQtdDezenas] = useState(loteriaSelecionada?.qtd_dezenas_padrao || 6);
+  const [isSaving, setIsSaving] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+  const [jogosSalvos, setJogosSalvos] = useState<Set<number>>(new Set());
+  const [salvandoParcial, setSalvandoParcial] = useState<Set<number>>(new Set());
+  const [resultadoGeracao, setResultadoGeracao] = useState<{ totalGerados: number; totalSolicitado: number; maiorScore: number; relaxado: boolean } | null>(null);
+
+  const opcoesQtd = useMemo(() => getOpcoesQtd(slug), [slug]);
+  const precoAtual = getPreco(slug, qtdDezenas);
 
   if (!loteriaSelecionada) {
     return (
@@ -142,13 +185,6 @@ export default function GerarPage() {
     setGeneratingProgress(0);
     setJogosGerados([]);
 
-    const progressInterval = setInterval(() => {
-      setGeneratingProgress(prev => {
-        if (prev >= 90) return prev;
-        return prev + Math.random() * 15;
-      });
-    }, 300);
-
     try {
       const response = await fetch(`/api/gerar/${slug}`, {
         method: "POST",
@@ -157,6 +193,7 @@ export default function GerarPage() {
           estrategias: [estrategiaSelecionada],
           quantidade,
           score_minimo: scoreMinimo,
+          qtd_dezenas: qtdDezenas,
         }),
       });
 
@@ -165,20 +202,79 @@ export default function GerarPage() {
       const data = await response.json();
       setJogosGerados(data.jogos);
       setLoteId(data.lote_id);
-      setGeneratingProgress(100);
+      // Progresso real: jogos aprovados vs pedidos
+      setGeneratingProgress(data.total_solicitado > 0 ? Math.round((data.total_gerados / data.total_solicitado) * 100) : 100);
+      setResultadoGeracao({ totalGerados: data.total_gerados, totalSolicitado: data.total_solicitado, maiorScore: data.maior_score_encontrado, relaxado: data.score_relaxado });
     } catch (error) {
       console.error("Erro ao gerar jogos:", error);
     } finally {
-      clearInterval(progressInterval);
       setTimeout(() => {
         setIsGenerating(false);
-        setGeneratingProgress(0);
-      }, 400);
+      }, 300);
     }
   };
 
   const handleExcluirJogo = (index: number) => {
     setJogosGerados(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSalvarTodos = async () => {
+    if (jogosGerados.length === 0) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/lotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loteria: loteriaSelecionada.id,
+          estrategia: estrategiaSelecionada,
+          jogos: jogosGerados.map(j => ({ dezenas: j.dezenas, score: j.score })),
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setLoteId(prev => prev || data.lote_id || null);
+        setSalvo(true);
+        setJogosSalvos(new Set(jogosGerados.map((_, i) => i)));
+        setTimeout(() => setSalvo(false), 3000);
+      }
+    } catch (e) {
+      console.error("Erro ao salvar jogos:", e);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleSalvarJogo = async (index: number) => {
+    const jogo = jogosGerados[index];
+    if (!jogo) return;
+    setSalvandoParcial(prev => new Set(prev).add(index));
+    try {
+      const res = await fetch("/api/lotes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          loteria: loteriaSelecionada.id,
+          estrategia: estrategiaSelecionada,
+          jogos: [{ dezenas: jogo.dezenas, score: jogo.score }],
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setLoteId(prev => prev || data.lote_id || null);
+        setJogosSalvos(prev => new Set(prev).add(index));
+      }
+    } catch (e) {
+      console.error("Erro ao salvar jogo:", e);
+    } finally {
+      setSalvandoParcial(prev => {
+        const next = new Set(prev);
+        next.delete(index);
+        return next;
+      });
+    }
   };
 
   const decrementarQuantidade = () => setQuantidade(prev => Math.max(1, prev - 1));
@@ -256,6 +352,39 @@ export default function GerarPage() {
             })}
           </div>
         </section>
+
+        {/* Quantity of Dezenas Selector */}
+        {opcoesQtd.length > 1 && (
+          <section className="mb-6">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+              Quantidade de Dezenas por Jogo
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              {opcoesQtd.map(qtd => {
+                const preco = getPreco(slug, qtd);
+                const isSelected = qtd === qtdDezenas;
+                return (
+                  <button
+                    key={qtd}
+                    onClick={() => setQtdDezenas(qtd)}
+                    className={`flex flex-col items-center px-3 py-2 rounded-lg border-2 transition-all ${
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-border hover:border-primary/40"
+                    }`}
+                  >
+                    <span className={`text-sm font-bold ${isSelected ? "text-primary" : ""}`}>
+                      {qtd} dezenas
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">
+                      R$ {preco.toFixed(2).replace('.', ',')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
 
         {/* Configuration Panel */}
         <section className="mb-8">
@@ -336,22 +465,33 @@ export default function GerarPage() {
                       onClick={decrementarQuantidade}
                       disabled={quantidade <= 1}
                       aria-label="Diminuir quantidade"
+                      className="h-10 w-10 rounded-full shrink-0"
                     >
                       <Minus className="h-4 w-4" />
                     </Button>
-                    <span className="w-20 h-10 flex items-center justify-center text-lg font-bold tabular-nums bg-background border border-input rounded-lg select-none">
-                      {quantidade}
-                    </span>
+                    <input
+                      type="number"
+                      value={quantidade}
+                      onChange={e => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val)) setQuantidade(Math.max(1, Math.min(250, val)));
+                      }}
+                      min={1}
+max={250}
+                      className="w-16 h-10 text-center text-lg font-bold tabular-nums bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
+                      aria-label="Quantidade de jogos"
+                    />
                     <Button
                       variant="outline"
                       size="icon"
                       onClick={incrementarQuantidade}
-                      disabled={quantidade >= 100}
+                      disabled={quantidade >= 250}
                       aria-label="Aumentar quantidade"
+                      className="h-10 w-10 rounded-full shrink-0"
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
-                    <span className="text-xs text-muted-foreground ml-1">até 100</span>
+                    <span className="text-xs text-muted-foreground ml-1">até 250</span>
                   </div>
                 </div>
               </div>
@@ -391,6 +531,35 @@ export default function GerarPage() {
                   </div>
                 </div>
               )}
+
+              {/* Resultado da geração com progresso real */}
+              {!isGenerating && resultadoGeracao && resultadoGeracao.totalSolicitado > 0 && (
+                <div className={`space-y-2 rounded-lg border p-3 ${resultadoGeracao.relaxado ? "border-amber-500/40 bg-amber-500/5" : "border-emerald-500/40 bg-emerald-500/5"}`}>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-semibold">
+                      {resultadoGeracao.totalGerados} de {resultadoGeracao.totalSolicitado} jogo(s) com score ≥ {scoreMinimo}
+                    </span>
+                    <Badge variant="outline" className="text-xs">
+                      maior score: {resultadoGeracao.maiorScore}
+                    </Badge>
+                  </div>
+                  <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${resultadoGeracao.totalSolicitado > 0 ? Math.min(100, (resultadoGeracao.totalGerados / resultadoGeracao.totalSolicitado) * 100) : 0}%` }}
+                    />
+                  </div>
+                  {resultadoGeracao.relaxado ? (
+                    <p className="text-xs text-amber-600">
+                      Foram gerados {resultadoGeracao.totalGerados} de {resultadoGeracao.totalSolicitado} jogo(s). Os jogos abaixo de {scoreMinimo} foram REJEITADOS — apenas {resultadoGeracao.totalGerados} atingiram a meta. Reduza o score mínimo ou tente novamente para buscar mais.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-emerald-600">
+                      Geração concluída: {resultadoGeracao.totalGerados} jogo(s) com score ≥ {scoreMinimo}.
+                    </p>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </section>
@@ -398,7 +567,7 @@ export default function GerarPage() {
         {/* Results */}
         {jogosGerados.length > 0 && (
           <section>
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 className="text-lg font-bold flex items-center gap-2">
                 <BarChart3 className="h-5 w-5 text-primary" />
                 Jogos Gerados
@@ -406,12 +575,28 @@ export default function GerarPage() {
                   {jogosGerados.length}
                 </Badge>
               </h2>
-              {loteId && (
-                <Badge variant="outline" className="text-xs gap-1">
-                  <CheckCircle2 className="h-3 w-3" />
-                  Salvo
-                </Badge>
-              )}
+              <div className="flex items-center gap-2">
+                {salvo && (
+                  <Badge variant="outline" className="text-xs gap-1 text-emerald-500 border-emerald-500/40">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Lista salva
+                  </Badge>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSalvarTodos}
+                  disabled={isSaving || jogosGerados.length === 0}
+                  className="gap-1.5"
+                >
+                  {isSaving ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="h-3.5 w-3.5" />
+                  )}
+                  Salvar Todos
+                </Button>
+              </div>
             </div>
 
             <div className="grid gap-3">
@@ -447,6 +632,22 @@ export default function GerarPage() {
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title={jogosSalvos.has(index) ? "Jogo salvo" : "Salvar jogo"}
+                          onClick={() => handleSalvarJogo(index)}
+                          disabled={salvandoParcial.has(index)}
+                          className={jogosSalvos.has(index) ? "text-emerald-500" : ""}
+                        >
+                          {salvandoParcial.has(index) ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : jogosSalvos.has(index) ? (
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                          ) : (
+                            <Save className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon-sm"

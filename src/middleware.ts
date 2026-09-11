@@ -1,12 +1,9 @@
-import { type NextRequest } from "next/server";
-import { updateSession } from "@/lib/supabase/middleware";
-
-export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+// Middleware desabilitado — proteção de auth feita no client via AuthProvider
+// O cookie antigo com avatar base64 causava 494 REQUEST_HEADER_TOO_LARGE
+export function middleware() {
+  return undefined;
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-  ],
+  matcher: [],
 };

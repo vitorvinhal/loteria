@@ -359,17 +359,17 @@ export default function SincronizarPage() {
                 Cancelar
               </Button>
             ) : (
-              <Button onClick={sincronizarLote} disabled={batch.start > batch.end || batch.end - batch.start > 200}>
+              <Button onClick={sincronizarLote} disabled={batch.start > batch.end || batch.end - batch.start > 1000}>
                 <Download className="h-4 w-4 mr-2" />
                 Sincronizar Lote
               </Button>
             )}
           </div>
 
-          {batch.end - batch.start > 200 && !batch.isSyncing && (
+          {batch.end - batch.start > 1000 && !batch.isSyncing && (
             <p className="text-sm text-destructive flex items-center gap-1">
               <AlertCircle className="h-4 w-4" />
-              Máximo de 200 concursos por vez.
+              Máximo de 1000 concursos por vez.
             </p>
           )}
 

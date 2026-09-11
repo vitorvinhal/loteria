@@ -1,23 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Separator } from "@/components/ui/separator";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-  SheetFooter,
-} from "@/components/ui/sheet";
-import { History, Download, RefreshCw, Filter, ArrowUpDown, Trash2, Target, GitCompareArrows, Share2 } from "lucide-react";
+import { History, RefreshCw, Filter, Trash2, Target, GitCompareArrows, Share2, Copy, User, Users } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
+import { useAuth } from "@/lib/supabase/auth/provider";
 
 interface JogoHistorico {
   id: string;
@@ -26,20 +17,36 @@ interface JogoHistorico {
   score: number | null;
   criado_em: string;
   estrategia: string;
+  nome?: string | null;
 }
 
-type SortField = "data" | "score" | "loteria";
-type SortOrder = "asc" | "desc";
+interface LoteHistorico {
+  id: string;
+  loteria: string;
+  nome?: string | null;
+  criado_em: string;
+  estrategia: string;
+  criado_por: string | null;
+  criador_avatar_url: string | null;
+  usuario_pode_excluir: boolean;
+  jogos: JogoHistorico[];
+}
+
+interface UsuarioAtualOpt {
+  id: string;
+  email: string;
+  nome: string;
+  avatar_url: string | null;
+}
 
 export default function HistoricoJogosPage() {
   const router = useRouter();
+  const { user } = useAuth();
   const [loteriaFiltro, setLoteriaFiltro] = useState("todas");
-  const [jogos, setJogos] = useState<JogoHistorico[]>([]);
+  const [filtroPeriodo, setFiltroPeriodo] = useState<"todos" | "7" | "30">("todos");
+  const [lotes, setLotes] = useState<LoteHistorico[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [sortField, setSortField] = useState<SortField>("data");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [jogoDetalhe, setJogoDetalhe] = useState<JogoHistorico | null>(null);
+  const [usuariosCount, setUsuariosCount] = useState(0);
 
   const fetchJogos = async () => {
     setIsLoading(true);
@@ -47,22 +54,30 @@ export default function HistoricoJogosPage() {
       const response = await fetch("/api/lotes");
       if (response.ok) {
         const data = await response.json();
-        const todosJogos: JogoHistorico[] = [];
-
-        for (const lote of data.lotes || []) {
-          for (const jogo of lote.jogos || []) {
-            todosJogos.push({
-              id: jogo.id,
-              loteria: lote.loteria,
-              dezenas: jogo.dezenas,
-              score: jogo.score,
-              criado_em: jogo.criado_em,
-              estrategia: lote.estrategia,
-            });
-          }
-        }
-
-        setJogos(todosJogos);
+        const listaLotes: LoteHistorico[] = (data.lotes || []).map((lote: any) => ({
+          id: lote.id,
+          loteria: lote.loteria || lote.loteria_id,
+          criado_em: lote.criado_em,
+          estrategia: lote.estrategia || "manual",
+          criado_por: lote.criado_por || null,
+          criador_avatar_url: lote.criador_avatar_url || null,
+          usuario_pode_excluir: lote.usuario_pode_excluir || false,
+          jogos: (lote.jogos || []).map((j: any) => ({
+            id: j.id,
+            loteria: lote.loteria || lote.loteria_id,
+            dezenas: j.dezenas || [],
+            score: j.score ?? null,
+            criado_em: j.criado_em,
+            estrategia: lote.estrategia || "manual",
+            nome: j.nome || null,
+          })),
+        }));
+        setLotes(listaLotes);
+        const criadores = new Set<string>();
+        listaLotes.forEach((l) => {
+          if (l.criado_por) criadores.add(l.criado_por);
+        });
+        setUsuariosCount(criadores.size);
       }
     } catch (error) {
       console.error("Erro ao carregar jogos:", error);
@@ -75,398 +90,281 @@ export default function HistoricoJogosPage() {
     fetchJogos();
   }, []);
 
-  const jogosFiltrados = loteriaFiltro === "todas"
-    ? jogos
-    : jogos.filter(j => j.loteria === loteriaFiltro);
+  const lotesFiltrados = useMemo(() => {
+    return lotes.filter((l) => {
+      if (loteriaFiltro !== "todas" && l.loteria !== loteriaFiltro) return false;
+      if (filtroPeriodo === "todos") return true;
+      const dias = parseInt(filtroPeriodo, 10);
+      return new Date(l.criado_em).getTime() >= Date.now() - dias * 86400000;
+    });
+  }, [lotes, loteriaFiltro, filtroPeriodo]);
 
-  const jogosOrdenados = [...jogosFiltrados].sort((a, b) => {
-    let comparacao = 0;
-
-    if (sortField === "data") {
-      comparacao = new Date(a.criado_em).getTime() - new Date(b.criado_em).getTime();
-    } else if (sortField === "score") {
-      comparacao = (a.score || 0) - (b.score || 0);
-    } else if (sortField === "loteria") {
-      comparacao = a.loteria.localeCompare(b.loteria);
-    }
-
-    return sortOrder === "desc" ? -comparacao : comparacao;
-  });
-
-  const toggleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
-    } else {
-      setSortField(field);
-      setSortOrder("desc");
-    }
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
+  const formatarData = (dataISO: string) => {
+    const d = new Date(dataISO);
+    if (isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString("pt-BR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      weekday: "long",
     });
   };
 
-  const toggleSelectAll = () => {
-    if (selectedIds.size === jogosOrdenados.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(jogosOrdenados.map(j => j.id)));
-    }
+  const formatarHora = (dataISO: string) => {
+    const d = new Date(dataISO);
+    if (isNaN(d.getTime())) return "";
+    return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
   };
 
-  const exportarCSV = () => {
-    const headers = ["Loteria", "Dezenas", "Score", "Estratégia", "Data"];
-    const rows = jogosOrdenados.map(j => [
-      j.loteria,
-      j.dezenas.join(";"),
-      j.score?.toString() || "",
-      j.estrategia,
-      new Date(j.criado_em).toLocaleDateString("pt-BR"),
-    ]);
-
-    const csv = [headers.join(","), ...rows.map(r => r.join(","))].join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `jogos-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
-
-  const compararSelecionados = () => {
-    const ids = Array.from(selectedIds);
-    if (ids.length >= 2) {
-      router.push(`/comparar?ids=${ids.join(",")}`);
-    }
-  };
-
-  const excluirJogo = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir este jogo?")) return;
+  const excluirLote = async (loteId: string) => {
+    if (!confirm("Tem certeza que deseja excluir este lote inteiro?")) return;
     try {
-      const response = await fetch(`/api/lotes/${id}`, { method: "DELETE" });
+      const response = await fetch(`/api/lotes/${loteId}`, { method: "DELETE" });
       if (response.ok) {
-        setJogos(prev => prev.filter(j => j.id !== id));
-        setJogoDetalhe(null);
-        setSelectedIds(prev => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
+        setLotes((prev) => prev.filter((l) => l.id !== loteId));
+      } else {
+        alert("Só o criador deste lote pode excluí-lo.");
       }
     } catch (error) {
       console.error("Erro ao excluir:", error);
     }
   };
 
-  const compartilharJogo = (jogo: JogoHistorico) => {
-    const texto = `Meu jogo ${jogo.loteria}: ${jogo.dezenas.map(d => String(d).padStart(2, "0")).join(" - ")} | Score: ${jogo.score || "-"}`;
+  const compartilharLote = (lote: LoteHistorico) => {
+    const texto = `Meu lote ${lote.loteria} (${lote.jogos.length} jogos):\n${lote.jogos
+      .map((j, i) => `${i + 1}) ${j.dezenas.map((d) => String(d).padStart(2, "0")).join(" - ")}`)
+      .join("\n")}`;
     if (navigator.share) {
-      navigator.share({ title: "Meu Jogo Loterias", text: texto });
+      navigator.share({ title: "Meu Lote Loterias", text: texto });
     } else {
       navigator.clipboard.writeText(texto);
     }
   };
 
-  const loteriasUnicas = [...new Set(jogos.map(j => j.loteria))];
-  const allSelected = selectedIds.size === jogosOrdenados.length && jogosOrdenados.length > 0;
+  const copiarJogo = (jogo: JogoHistorico) => {
+    const texto = `${jogo.dezenas.map((d) => String(d).padStart(2, "0")).join(" - ")}`;
+    navigator.clipboard.writeText(texto).then(() => alert("Jogo copiado!"));
+  };
+
+  const copiarLote = (lote: LoteHistorico) => {
+    const texto = lote.jogos
+      .map((j, i) => `${i + 1}) ${j.dezenas.map((d) => String(d).padStart(2, "0")).join(" - ")}`)
+      .join("\n");
+    navigator.clipboard.writeText(texto).then(() => alert("Lote copiado!"));
+  };
+
+  const totalJogos = lotes.reduce((s, l) => s + l.jogos.length, 0);
+  const criadoresUnicos = new Set(lotes.map((l) => l.criado_por).filter(Boolean)).size;
+
+  const loteIcone = (loteria: string) => {
+    const icons: Record<string, string> = {
+      lotofacil: "⭐", lotomania: "🎱", megasena: "🏆", quina: "💎",
+      duplasena: "🔄", timemania: "⚽", diadesorte: "🌟", maismilionaria: "💰", supersete: "7️⃣",
+    };
+    return icons[loteria] || "🎲";
+  };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-6xl">
+    <div className="container mx-auto px-4 py-8 max-w-4xl">
       <div className="mb-6">
         <h1 className="text-3xl font-bold flex items-center gap-2">
           <History className="h-8 w-8 text-primary" />
           Histórico de Jogos
         </h1>
         <p className="text-muted-foreground mt-2">
-          Visualize todos os jogos que você gerou anteriormente.
+          Jogos criados por todos os usuários. Cada geração forma um lote separado.
         </p>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 mb-6">
+      {/* Resumo */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <History className="h-6 w-6 text-primary" />
+            <div>
+              <p className="text-2xl font-bold">{totalJogos}</p>
+              <p className="text-xs text-muted-foreground">Jogos</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <Users className="h-6 w-6 text-primary" />
+            <div>
+              <p className="text-2xl font-bold">{criadoresUnicos}</p>
+              <p className="text-xs text-muted-foreground">Criadores</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4 flex items-center gap-3">
+            <Filter className="h-6 w-6 text-primary" />
+            <div>
+              <p className="text-2xl font-bold">{lotes.length}</p>
+              <p className="text-xs text-muted-foreground">Lotes</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filtro */}
+      <div className="flex flex-col sm:flex-row items-center gap-4 mb-6 flex-wrap">
         <Select value={loteriaFiltro} onValueChange={(v) => v && setLoteriaFiltro(v)}>
-          <SelectTrigger className="w-full sm:w-[200px]">
+          <SelectTrigger className="w-full sm:w-[220px] h-10">
             <SelectValue placeholder="Todas as loterias" />
           </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todas">Todas as loterias</SelectItem>
-            {loteriasUnicas.map(l => (
-              <SelectItem key={l} value={l}>{l}</SelectItem>
+          <SelectContent className="z-50">
+            <SelectItem value="todas" className="py-2">Todas as loterias</SelectItem>
+            {LOTERIAS.filter((l) => l.ativo).map((l) => (
+              <SelectItem key={l.slug} value={l.slug} className="py-2">
+                {loteIcone(l.slug)} {l.nome}
+              </SelectItem>
             ))}
           </SelectContent>
         </Select>
-
+        <div className="flex items-center gap-1 p-1 rounded-lg bg-muted/40 seg-filter">
+          {([["todos", "Tudo"], ["7", "7 dias"], ["30", "30 dias"]] as const).map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              onClick={() => setFiltroPeriodo(val)}
+              className={`px-3 py-1 rounded-md text-xs font-semibold transition-colors ${
+                filtroPeriodo === val ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <Button variant="outline" className="gap-2" onClick={fetchJogos} disabled={isLoading}>
           <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
           Atualizar
         </Button>
-
-        <Button variant="outline" className="gap-2" onClick={exportarCSV} disabled={jogos.length === 0}>
-          <Download className="h-4 w-4" />
-          Exportar CSV
-        </Button>
-
-        {selectedIds.size >= 2 && (
-          <Button className="gap-2" onClick={compararSelecionados}>
-            <GitCompareArrows className="h-4 w-4" />
-            Comparar Selecionados ({selectedIds.size})
-          </Button>
-        )}
       </div>
 
-      {selectedIds.size > 0 && selectedIds.size < 2 && (
-        <p className="text-sm text-muted-foreground mb-4">
-          Selecione pelo menos 2 jogos para comparar.
-        </p>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <span>Jogos Gerados</span>
-            <Badge variant="outline">{jogosFiltrados.length} jogos</Badge>
-          </CardTitle>
-          <CardDescription>
-            <div className="flex gap-4 mt-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleSort("data")}
-                className="h-7 px-2"
-              >
-                <ArrowUpDown className="h-3 w-3 mr-1" />
-                Data {sortField === "data" && (sortOrder === "desc" ? "↓" : "↑")}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleSort("score")}
-                className="h-7 px-2"
-              >
-                <ArrowUpDown className="h-3 w-3 mr-1" />
-                Score {sortField === "score" && (sortOrder === "desc" ? "↓" : "↑")}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => toggleSort("loteria")}
-                className="h-7 px-2"
-              >
-                <ArrowUpDown className="h-3 w-3 mr-1" />
-                Loteria {sortField === "loteria" && (sortOrder === "desc" ? "↓" : "↑")}
-              </Button>
-            </div>
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <RefreshCw className="h-8 w-8 mx-auto mb-2 animate-spin" />
-              <p>Carregando jogos...</p>
-            </div>
-          ) : jogos.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Filter className="h-8 w-8 mx-auto mb-2" />
-              <p>Nenhum jogo gerado ainda.</p>
-              <p className="text-sm mt-2">Gere seu primeiro jogo na página de geração.</p>
-            </div>
-          ) : jogosFiltrados.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Filter className="h-8 w-8 mx-auto mb-2" />
-              <p>Nenhum jogo encontrado para esta loteria.</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-10">
-                    <button
-                      onClick={toggleSelectAll}
-                      className={`h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
-                        allSelected
-                          ? "bg-primary border-primary"
-                          : selectedIds.size > 0
-                            ? "bg-primary/50 border-primary"
-                            : "border-muted-foreground/50"
-                      }`}
-                    >
-                      {allSelected && (
-                        <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M2 6l3 3 5-5" />
-                        </svg>
-                      )}
-                      {selectedIds.size > 0 && !allSelected && (
-                        <div className="h-1.5 w-1.5 bg-primary-foreground rounded-sm" />
-                      )}
-                    </button>
-                  </TableHead>
-                  <TableHead>Loteria</TableHead>
-                  <TableHead>Dezenas</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Estratégia</TableHead>
-                  <TableHead>Data</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {jogosOrdenados.map(jogo => (
-                  <TableRow
-                    key={jogo.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => setJogoDetalhe(jogo)}
-                  >
-                    <TableCell onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={() => toggleSelect(jogo.id)}
-                        className={`h-4 w-4 rounded border-2 flex items-center justify-center transition-colors ${
-                          selectedIds.has(jogo.id)
-                            ? "bg-primary border-primary"
-                            : "border-muted-foreground/50"
-                        }`}
-                      >
-                        {selectedIds.has(jogo.id) && (
-                          <svg className="h-3 w-3 text-primary-foreground" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M2 6l3 3 5-5" />
-                          </svg>
-                        )}
-                      </button>
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <Badge variant="outline">{jogo.loteria}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1 flex-wrap">
-                        {jogo.dezenas.slice(0, 6).map(d => (
-                          <Badge key={d} variant="secondary" className="text-xs">
-                            {String(d).padStart(2, "0")}
-                          </Badge>
-                        ))}
-                        {jogo.dezenas.length > 6 && (
-                          <Badge variant="outline" className="text-xs">
-                            +{jogo.dezenas.length - 6}
-                          </Badge>
-                        )}
+      {isLoading ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <RefreshCw className="h-8 w-8 mx-auto mb-2 animate-spin" />
+          <p>Carregando histórico...</p>
+        </div>
+      ) : lotesFiltrados.length === 0 ? (
+        <div className="text-center py-16 text-muted-foreground">
+          <Filter className="h-8 w-8 mx-auto mb-2" />
+          <p>Nenhum lote encontrado.</p>
+          <p className="text-sm mt-2">Gere jogos para aparecerem aqui.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {lotesFiltrados.map((lote) => (
+            <Card key={lote.id}>
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Foto do criador */}
+                    {lote.criador_avatar_url ? (
+                      <img
+                        src={lote.criador_avatar_url}
+                        alt="Foto"
+                        className="h-10 w-10 rounded-full object-cover border border-border shrink-0"
+                      />
+                    ) : (
+                      <span className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                        <User className="h-5 w-5" />
+                      </span>
+                    )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-lg font-bold">
+                          {loteIcone(lote.loteria)} {LOTERIAS.find((l) => l.slug === lote.loteria)?.nome || lote.loteria}
+                        </span>
+                        <Badge variant="outline">{lote.jogos.length} jogos</Badge>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={jogo.score && jogo.score >= 80 ? "default" : "secondary"}>
-                        {jogo.score || "-"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="capitalize">{jogo.estrategia}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(jogo.criado_em).toLocaleDateString("pt-BR")}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-sm text-muted-foreground capitalize">
+                          {formatarData(lote.criado_em)}
+                        </span>
+                        <span className="text-xs text-muted-foreground">{formatarHora(lote.criado_em)}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Criado por <span className="font-medium text-foreground">{lote.criado_por || "Anônimo"}</span>
+                      </p>
+                    </div>
+                  </div>
 
-      {/* Detalhes do Jogo - Sheet */}
-      <Sheet open={!!jogoDetalhe} onOpenChange={(open) => !open && setJogoDetalhe(null)}>
-        <SheetContent side="right" className="w-full sm:max-w-md">
-          {jogoDetalhe && (
-            <>
-              <SheetHeader>
-                <SheetTitle>Detalhes do Jogo</SheetTitle>
-                <SheetDescription>
-                  {new Date(jogoDetalhe.criado_em).toLocaleString("pt-BR")}
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="flex-1 overflow-y-auto px-4 space-y-6">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">Loteria</p>
-                  <Badge variant="outline" className="text-base">{jogoDetalhe.loteria}</Badge>
-                </div>
-
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">Dezenas</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {jogoDetalhe.dezenas.map(d => (
-                      <Badge key={d} variant="secondary" className="text-base px-3 py-1">
-                        {String(d).padStart(2, "0")}
-                      </Badge>
-                    ))}
+                  {/* Ações */}
+                  <div className="flex items-center gap-1 shrink-0 flex-wrap">
+                    <Button variant="ghost" size="icon-sm" title="Copiar lote" onClick={() => copiarLote(lote)}>
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" title="Comparar" onClick={() => router.push(`/comparar?loteId=${lote.id}`)}>
+                      <GitCompareArrows className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon-sm" title="Compartilhar" onClick={() => compartilharLote(lote)}>
+                      <Share2 className="h-4 w-4" />
+                    </Button>
+                    {lote.usuario_pode_excluir && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        title="Excluir lote"
+                        onClick={() => excluirLote(lote.id)}
+                        className="text-destructive hover:text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </div>
                 </div>
-
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">Score</p>
-                  <Badge
-                    variant={jogoDetalhe.score && jogoDetalhe.score >= 80 ? "default" : "secondary"}
-                    className="text-lg px-4 py-1"
-                  >
-                    {jogoDetalhe.score || "-"}
-                  </Badge>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {lote.jogos.map((jogo, idx) => (
+                    <div key={jogo.id} className="flex flex-col sm:flex-row sm:items-center gap-3">
+                      <span className="text-xs font-bold text-muted-foreground w-8 shrink-0">
+                        #{idx + 1}
+                      </span>
+                      <div className="flex flex-wrap gap-1.5 flex-1 min-w-0">
+                        {jogo.dezenas.map((d) => (
+                          <span
+                            key={d}
+                            className="inline-flex items-center justify-center h-8 min-w-[2rem] rounded-full bg-primary/10 text-primary text-sm font-bold tabular-nums"
+                          >
+                            {String(d).padStart(2, "0")}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {jogo.nome && <Badge variant="outline" className="max-w-[140px] truncate">{jogo.nome}</Badge>}
+                        {jogo.score !== null && (
+                          <Badge variant={jogo.score >= 80 ? "default" : "secondary"} className="text-xs">
+                            {jogo.score}
+                          </Badge>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Copiar"
+                          onClick={() => copiarJogo(jogo)}
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Analisar"
+                          onClick={() => router.push(`/analise?loteria=${jogo.loteria}&dezenas=${jogo.dezenas.join(",")}`)}
+                        >
+                          <Target className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">Estratégia</p>
-                  <p className="capitalize">{jogoDetalhe.estrategia}</p>
-                </div>
-
-                <Separator />
-
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground mb-2">Data de Criação</p>
-                  <p>{new Date(jogoDetalhe.criado_em).toLocaleString("pt-BR")}</p>
-                </div>
-              </div>
-
-              <SheetFooter className="flex-row gap-2 pt-4">
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-2"
-                  onClick={() => {
-                    setJogoDetalhe(null);
-                    router.push(`/analise?loteria=${jogoDetalhe.loteria}&dezenas=${jogoDetalhe.dezenas.join(",")}`);
-                  }}
-                >
-                  <Target className="h-4 w-4" />
-                  Analisar
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-2"
-                  onClick={() => {
-                    setJogoDetalhe(null);
-                    router.push(`/comparar?ids=${jogoDetalhe.id}`);
-                  }}
-                >
-                  <GitCompareArrows className="h-4 w-4" />
-                  Comparar
-                </Button>
-                <Button
-                  variant="outline"
-                  className="flex-1 gap-2"
-                  onClick={() => compartilharJogo(jogoDetalhe)}
-                >
-                  <Share2 className="h-4 w-4" />
-                  Compartilhar
-                </Button>
-                <Button
-                  variant="destructive"
-                  className="gap-2"
-                  onClick={() => excluirJogo(jogoDetalhe.id)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </SheetFooter>
-            </>
-          )}
-        </SheetContent>
-      </Sheet>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

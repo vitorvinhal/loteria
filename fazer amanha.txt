@@ -1,0 +1,10 @@
+Inspecionar o estado atual do FN Dash e identificar integrações incompletas
+Corrigir integração de scoring completo (Score.js do plano-milionario) no módulo lottery do app.js
+Adicionar input numérico typeable + botões +/- polidos nas telas gerar/criar-jogo/bolão
+Corrigir picker de círculos (bounds = max dezenas da loteria) e limites de quantidade
+Corrigir persistência save/history e autenticação (Auth Supabase + localStorage)
+Corrigir páginas estatísticas, concursos, comparar e sincronizar
+Implementar sincronização batch para todas as loterias
+Resolver erro 'unauthorized' na configuração do usuário
+Build, deploy e verificação de endpoints
+Atualizar CHANGELOG.md com correções concluídas

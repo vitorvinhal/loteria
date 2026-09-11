@@ -1,20 +1,32 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/db";
-import { getSession } from "@/lib/supabase/auth/server";
+import { getSession, getSupabaseWithAuth } from "@/lib/supabase/auth/server";
+import { isAdminUser } from "@/lib/admin";
 
 export async function GET() {
   try {
     const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json({ lotes: [], stats: { totalJogos: 0, totalLotes: 0, loteriasUsadas: [], melhorScore: 0, mediaScore: 0 } });
+
+    // Cliente autenticado (carrega usuario_id real, respeita RLS com auth.uid())
+    const supabase = session?.user ? await getSupabaseWithAuth() : getSupabase();
+    const userId = session?.user?.id ?? null;
+    const ehAdmin = isAdminUser(session?.user);
+
+    // Foto atual do usuário logado (para lotes dele antigos sem foto gravada)
+    let minhaFoto: string | null = null;
+    if (userId) {
+      const { data: fotoRow } = await supabase
+        .from("perfil_foto")
+        .select("avatar_base64")
+        .eq("usuario_id", userId)
+        .single();
+      minhaFoto = fotoRow?.avatar_base64 || session?.user?.user_metadata?.avatar_url || null;
     }
 
-    const supabase = getSupabase();
-
+    // Histórico COMPARTILHADO: busca todos os lotes/jogos (política RLS permite leitura geral)
     const { data: lotes, error: lotesError } = await supabase
       .from("lotes_geracao")
       .select("*")
-      .eq("usuario_id", session.user.id)
       .order("criado_em", { ascending: false });
 
     if (lotesError) {
@@ -25,7 +37,6 @@ export async function GET() {
     const { data: jogos, error: jogosError } = await supabase
       .from("jogos_gerados")
       .select("*")
-      .eq("usuario_id", session.user.id)
       .order("criado_em", { ascending: false });
 
     if (jogosError) {
@@ -48,16 +59,42 @@ export async function GET() {
       mediaScore,
     };
 
-    const lotesComJogos = lotes?.map((lote) => ({
-      ...lote,
-      loteria: lote.loteria_id,
-      estrategia: lote.estrategia_id || "manual",
-      jogos: jogos?.filter((j) => j.lote_id === lote.id) || [],
-    })) || [];
+    // jogos que pertencem ao usuário logado → podem ser excluídos
+    const jogosPorLote = new Map<string, typeof jogos>();
+    (jogos || []).forEach((j) => {
+      if (!j.lote_id) return;
+      const lista = jogosPorLote.get(j.lote_id) || [];
+      lista.push(j);
+      jogosPorLote.set(j.lote_id, lista);
+    });
+
+    const lotesComJogos = lotes
+    ?.map((lote) => {
+      const ehMeuLote = userId != null && lote.usuario_id === userId;
+      const foto = lote.criador_avatar_url || (ehMeuLote ? minhaFoto : null);
+      return {
+        ...lote,
+        loteria: lote.loteria_id,
+        estrategia: lote.estrategia_id || "manual",
+        criado_por: lote.criado_por || (session?.user?.user_metadata?.nome || session?.user?.email?.split("@")[0] || null),
+        criador_avatar_url: foto,
+        eh_do_usuario: ehMeuLote,
+        usuario_pode_excluir: ehAdmin || ehMeuLote,
+        jogos: jogosPorLote.get(lote.id) || [],
+      };
+    })
+    .filter((lote) => lote.jogos.length > 0) || []; // ignora lotes sem jogos
 
     return NextResponse.json({
       lotes: lotesComJogos,
       stats,
+      is_admin: ehAdmin,
+      usuario_atual: session?.user ? {
+        id: session.user.id,
+        email: session.user.email,
+        nome: session.user.user_metadata?.nome || session.user.email?.split("@")[0] || "Usuário",
+        avatar_url: session.user.user_metadata?.avatar_url || null,
+      } : null,
     });
   } catch (error) {
     console.error("[API] Erro geral:", error);
@@ -77,7 +114,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
     }
 
-    const supabase = getSupabase();
+    // Usa cliente autenticado para respeitar RLS (auth.uid()) em INSERT
+    const supabase = session?.user ? await getSupabaseWithAuth() : getSupabase();
+
+    const criadoPor = session?.user?.user_metadata?.nome || session?.user?.email?.split("@")[0] || null;
+    const avatarUrl = session?.user?.user_metadata?.avatar_url || null;
 
     // Criar lote
     const { data: lote, error: loteError } = await supabase
@@ -92,6 +133,8 @@ export async function POST(request: Request) {
         tempo_execucao_ms: 0,
         score_relaxado: false,
         status: "concluido",
+        criado_por: criadoPor,
+        criador_avatar_url: avatarUrl,
       })
       .select()
       .single();
@@ -102,7 +145,7 @@ export async function POST(request: Request) {
     }
 
     // Inserir jogos
-    const jogosParaSalvar = jogos.map((j: { dezenas: number[]; score: number | null }) => ({
+    const jogosParaSalvar = jogos.map((j: { dezenas: number[]; score: number | null; nome?: string }) => ({
       lote_id: lote.id,
       usuario_id: userId,
       loteria_id: loteria,
@@ -111,12 +154,15 @@ export async function POST(request: Request) {
       score: j.score || 0,
       score_breakdown: {},
       origem: "manual",
+      nome: j.nome || null,
     }));
 
     const { error: jogosError } = await supabase.from("jogos_gerados").insert(jogosParaSalvar);
 
     if (jogosError) {
       console.error("[API] Erro ao salvar jogos:", jogosError);
+      // Rollback: remove o lote vazio criado
+      await supabase.from("lotes_geracao").delete().eq("id", lote.id);
       return NextResponse.json({ error: "Erro ao salvar jogos" }, { status: 500 });
     }
 

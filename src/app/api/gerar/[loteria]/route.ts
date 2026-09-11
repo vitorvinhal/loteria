@@ -3,13 +3,15 @@ import { getLoteriaPorSlug } from "@/lib/loterias";
 import { getEstrategiaPorSlug } from "@/modules/strategies";
 import { calcularScore } from "@/modules/scoring";
 import { getSupabase } from "@/lib/db";
-import { getUser } from "@/lib/supabase/auth/server";
+import { getUser, getSupabaseWithAuth } from "@/lib/supabase/auth/server";
+import { buscarResultado, buscarHistoricoCompleto } from "@/modules/sync";
 import { Estatisticas, Loteria } from "@/types";
 
 interface GerarRequest {
   estrategias: string[];
   quantidade: number;
   score_minimo?: number;
+  qtd_dezenas?: number;
 }
 
 function statsVazias(): Estatisticas {
@@ -30,14 +32,48 @@ async function buscarEstatisticasReais(loteria: Loteria): Promise<Estatisticas> 
   const stats = statsVazias();
   try {
     const supabase = getSupabase();
-    const { data: concursos } = await supabase
+    const { data: concursos, error } = await supabase
       .from('concursos')
       .select('dezenas_sorteadas')
       .eq('loteria_id', loteria.id)
       .order('numero_concurso', { ascending: false })
       .limit(50);
 
-    if (!concursos || concursos.length === 0) return stats;
+    if (!concursos || concursos.length === 0 || error) {
+      // Fallback: histórico completo em UMA chamada (bulk), rápido e com dados reais
+      const { concursos: historico } = await buscarHistoricoCompleto(loteria);
+      const drawsDezenas = historico.slice(0, 50).map((c) => c.dezenas_sorteadas).filter(d => d.length > 0);
+
+      if (drawsDezenas.length === 0) return stats;
+
+      const freq = new Map<number, number>();
+      const atraso = new Map<number, number>();
+      for (let i = loteria.universo_min; i <= loteria.universo_max; i++) {
+        atraso.set(i, drawsDezenas.length);
+      }
+      drawsDezenas.forEach((dezenas, idx) => {
+        dezenas.forEach((d) => {
+          freq.set(d, (freq.get(d) || 0) + 1);
+          if (atraso.get(d) === drawsDezenas.length) atraso.set(d, idx);
+        });
+      });
+      stats.frequencia = freq;
+      stats.frequencia_percentual = new Map(
+        Array.from(freq.entries()).map(([d, f]) => [d, (f / drawsDezenas.length) * 100])
+      );
+      stats.atraso = atraso;
+      const somas = drawsDezenas.map(ds => ds.reduce((a, b) => a + b, 0));
+      const media = somas.reduce((a, b) => a + b, 0) / somas.length;
+      const variancia = somas.reduce((s, v) => s + Math.pow(v - media, 2), 0) / somas.length;
+      stats.soma_concursos = {
+        min: Math.min(...somas),
+        max: Math.max(...somas),
+        media,
+        desvio_padrao: Math.sqrt(variancia),
+        faixa_frequente: [Math.min(...somas), Math.max(...somas)],
+      };
+      return stats;
+    }
 
     const frequencia = new Map<number, number>();
     const atraso = new Map<number, number>();
@@ -100,8 +136,8 @@ function gerarAleatorio(loteria: Loteria, quantidade: number): number[] {
   return selecionados.sort((a, b) => a - b);
 }
 
-function temDezenasValidas(dezenas: number[], loteria: Loteria): boolean {
-  if (!dezenas || dezenas.length !== loteria.qtd_dezenas_padrao) return false;
+function temDezenasValidas(dezenas: number[], loteria: Loteria, qtdEsperada: number): boolean {
+  if (!dezenas || dezenas.length !== qtdEsperada) return false;
   return dezenas.every(d => d >= loteria.universo_min && d <= loteria.universo_max);
 }
 
@@ -118,10 +154,29 @@ export async function POST(
     }
 
     const body: GerarRequest = await request.json();
-    const { estrategias, quantidade, score_minimo = 0 } = body;
+    const { estrategias, quantidade, score_minimo = 0, qtd_dezenas } = body;
 
-    if (!estrategias || !Array.isArray(estrategias) || estrategias.length === 0 || quantidade < 1 || quantidade > 100) {
+    // Use qtd_dezenas if provided, otherwise default to loteria.qtd_dezenas_padrao
+    const qtdDezenas = qtd_dezenas && qtd_dezenas >= loteria.qtd_dezenas_min && qtd_dezenas <= loteria.qtd_dezenas_max
+      ? qtd_dezenas
+      : loteria.qtd_dezenas_padrao;
+
+    if (!estrategias || !Array.isArray(estrategias) || estrategias.length === 0 || quantidade < 1 || quantidade > 250) {
       return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
+    }
+
+    const user = await getUser();
+    const usuarioId = user?.id ?? null;
+    const criadoPor = user?.user_metadata?.nome || user?.email?.split("@")[0] || null;
+
+    let camuflagemAtiva = false;
+    if (usuarioId) {
+      const { data: perfil } = await getSupabase()
+        .from('perfil_foto')
+        .select('camuflagem_ativa')
+        .eq('usuario_id', usuarioId)
+        .single();
+      camuflagemAtiva = perfil?.camuflagem_ativa ?? false;
     }
 
     const slugEstrategia = estrategias[0];
@@ -135,46 +190,72 @@ export async function POST(
       breakdown: Record<string, unknown>;
     }> = [];
 
-    const tentativasMaximas = 2000;
-    const timeoutMs = 60000;
+    const tentativasMaximas = Math.max(200000, quantidade * 4000);
+    const timeoutMs = 50000; // dentro do timeout do Vercel (60s hobby)
     const inicio = Date.now();
     let tentativas = 0;
+    let maiorScoreEncontrado = 0;
+    const vistos = new Set<string>();
 
-    while (jogos.length < quantidade && tentativas < tentativasMaximas && Date.now() - inicio < timeoutMs) {
+    const avaliarCandidato = (dezenas: number[], indicadores: Record<string, number>): { dezenas: number[]; score: number; breakdown: Record<string, unknown> } | null => {
+      const sc = calcularScore(dezenas, loteria, estatisticas, indicadores);
+      if (sc.total > maiorScoreEncontrado) maiorScoreEncontrado = sc.total;
+      return {
+        dezenas,
+        score: sc.total,
+        breakdown: sc as unknown as Record<string, unknown>,
+      };
+    };
+
+    // Gera candidatos e aceita APENAS os que atingem o score mínimo.
+    // Rejeita jogos abaixo da meta — só retorna jogos válidos.
+    while (tentativas < tentativasMaximas && Date.now() - inicio < timeoutMs && jogos.length < quantidade) {
       tentativas++;
 
-      let dezenas: number[];
-      let indicadores: Record<string, number> = {};
+      // Gera até 60 candidatos por tentativa
+      const candidatos: Array<{ dezenas: number[]; indicadores: Record<string, number> }> = [];
 
       if (estrategiaConfig) {
         try {
           const { funcoesEstrategias } = await import("@/modules/strategies/implementations");
           const funcao = funcoesEstrategias[slugEstrategia];
-          if (funcao) {
+          for (let i = 0; i < 10 && funcao; i++) {
             const resultado = funcao(loteria, estatisticas, estrategiaConfig.parametros_padrao);
-            if (temDezenasValidas(resultado.dezenas, loteria)) {
-              dezenas = resultado.dezenas;
-              indicadores = resultado.indicadores || {};
-            } else {
-              dezenas = gerarAleatorio(loteria, loteria.qtd_dezenas_padrao);
+            if (temDezenasValidas(resultado.dezenas, loteria, qtdDezenas)) {
+              candidatos.push({ dezenas: resultado.dezenas, indicadores: resultado.indicadores || {} });
             }
-          } else {
-            dezenas = gerarAleatorio(loteria, loteria.qtd_dezenas_padrao);
           }
-        } catch {
-          dezenas = gerarAleatorio(loteria, loteria.qtd_dezenas_padrao);
-        }
-      } else {
-        dezenas = gerarAleatorio(loteria, loteria.qtd_dezenas_padrao);
+        } catch { /* ignora */ }
       }
 
-      const score = calcularScore(dezenas, loteria, estatisticas, indicadores);
+      for (let i = candidatos.length; i < 60; i++) {
+        candidatos.push({ dezenas: gerarAleatorio(loteria, qtdDezenas), indicadores: { aleatoriamente: 0.5 } });
+      }
 
-      if (score.total >= score_minimo) {
+      for (const c of candidatos) {
+        const av = avaliarCandidato(c.dezenas, c.indicadores);
+        if (av && av.score >= score_minimo) {
+          const chave = av.dezenas.join("-");
+          if (!vistos.has(chave)) {
+            vistos.add(chave);
+            jogos.push(av);
+            if (jogos.length >= quantidade) break;
+          }
+        }
+      }
+    }
+
+    // Aplicar camuflagem (ilusão) se ativado
+    if (camuflagemAtiva && quantidade >= 30 && (slug === 'supersete' || slug === 'lotofacil')) {
+      const maxFakes = 3;
+      const fakesNeeded = Math.min(maxFakes, quantidade - jogos.length);
+      for (let i = 0; i < fakesNeeded; i++) {
+        // Cria um jogo fictício com score máximo (ex.: 100) e dezenas aleatórias
+        const fakeDezenas = gerarAleatorio(loteria, qtdDezenas);
         jogos.push({
-          dezenas,
-          score: score.total,
-          breakdown: score as unknown as Record<string, unknown>,
+          dezenas: fakeDezenas,
+          score: 100,
+          breakdown: {},
         });
       }
     }
@@ -182,12 +263,12 @@ export async function POST(
     jogos.sort((a, b) => b.score - a.score);
 
     const tempoExecucao = Date.now() - inicio;
-    const user = await getUser();
-    const usuarioId = user?.id ?? null;
+    const criadorAvatar = user?.user_metadata?.avatar_url || null;
 
     let loteId: string | null = null;
     try {
-      const { data: lote, error: errorLote } = await getSupabase()
+      const saveClient = user ? await getSupabaseWithAuth() : getSupabase();
+      const { data: lote, error: errorLote } = await saveClient
         .from('lotes_geracao')
         .insert({
           usuario_id: usuarioId,
@@ -198,26 +279,37 @@ export async function POST(
           quantidade_gerada: jogos.length,
           tempo_execucao_ms: tempoExecucao,
           score_relaxado: jogos.length < quantidade,
+          criado_por: criadoPor,
+          criador_avatar_url: criadorAvatar,
         })
         .select()
         .single();
 
       if (!errorLote && lote) {
         loteId = lote.id;
-        const jogosParaSalvar = jogos.map(j => ({
-          lote_id: lote.id,
-          usuario_id: usuarioId,
-          loteria_id: loteria.id,
-          dezenas: j.dezenas,
-          estrategia_id: estrategiaConfig?.id || null,
-          score: j.score,
-          score_breakdown: j.breakdown,
-          origem: 'algoritmo' as const,
-        }));
+        if (jogos.length === 0) {
+          // Nenhum jogo aprovado: rollback do lote vazio
+          await saveClient.from('lotes_geracao').delete().eq('id', lote.id);
+          loteId = null;
+        } else {
+          const jogosParaSalvar = jogos.map(j => ({
+            lote_id: lote.id,
+            usuario_id: usuarioId,
+            loteria_id: loteria.id,
+            dezenas: j.dezenas,
+            estrategia_id: estrategiaConfig?.id || null,
+            score: j.score,
+            score_breakdown: j.breakdown,
+            origem: 'algoritmo' as const,
+          }));
 
-        const { error: jogosError } = await getSupabase().from('jogos_gerados').insert(jogosParaSalvar);
-        if (jogosError) {
-          console.error("[API] Erro ao salvar jogos (jogos_gerados):", jogosError);
+          const { error: jogosError } = await saveClient.from('jogos_gerados').insert(jogosParaSalvar);
+          if (jogosError) {
+            console.error("[API] Erro ao salvar jogos (jogos_gerados):", jogosError);
+            // Rollback: remove o lote vazio
+            await saveClient.from('lotes_geracao').delete().eq('id', lote.id);
+            loteId = null;
+          }
         }
       } else if (errorLote) {
         console.error("[API] Erro ao salvar lote (lotes_geracao):", errorLote.message);
@@ -234,7 +326,9 @@ export async function POST(
       score_minimo,
       tempo_execucao_ms: tempoExecucao,
       tentativas,
-      score_relaxado: jogos.length < quantidade,
+      score_relaxado: jogos.length < quantidade || jogos.some(j => j.score < score_minimo),
+      maior_score_encontrado: maiorScoreEncontrado,
+      progresso: jogos.length, // jogos já aprovados, para a barra mostrar progresso real
     });
   } catch (error) {
     console.error("[API] Erro na geração:", error);

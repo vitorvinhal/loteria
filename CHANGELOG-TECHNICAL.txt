@@ -1,0 +1,73 @@
+================================================================================
+CHANGELOG TÉCNICO - Loterias CAIXA Omega
+Versão: 2.4.1
+Data: 10/09/2026
+================================================================================
+
+RESUMO DA VERSÃO
+-----------------
+Score system corrigido (estatísticas reais via fallback API externa + geração
+até atingir a quantidade), nomeação de jogos individuais com lista completa na
+análise/comparação, e remoção total de localStorage (100% Supabase).
+
+================================================================================
+MUDANÇAS DETALHADAS
+================================================================================
+
+1. CORREÇÃO: Score System
+   Arquivos: src/app/api/gerar/[loteria]/route.ts, src/modules/scoring/index.ts
+   - buscarEstatisticasReais: busca da API externa (50 concursos) quando o banco
+     está vazio (antes retornava stats vazias e zerava o score)
+   - Geração agora avalia 6 candidatos por tentativa (estratégia + variações
+     aleatórias) até atingir a quantidade pedida
+   - Sem duplicatas (Set de chaves)
+   - Relaxamento progressivo de score se o mínimo for inatingível (mantém aviso
+     via score_relaxado)
+   - tentativasMaximas: max(10000, quantidade*200) e timeout 120s
+   - Normalização de frequência pelo valor máximo (não /10 fixo)
+
+2. NOVO: Nomear Jogos Individuais
+   Migração: database/migration_nome_jogos.sql
+   - Coluna `nome` adicionada em jogos_gerados
+   - PATCH /api/lotes/[id] para renomear jogo salvo
+   - POST /api/lotes aceita `nome` por jogo
+   - Análise mostra lista completa de Jogos Salvos (nome, data e dia da geração,
+     score, dezenas), com renomeação inline
+   - Comparar lista os jogos salvos nomeados por data para seleção
+   - Gerar: botão Salvar Todos + botão salvar individual por jogo
+
+3. SUPABASE 100% (sem localStorage)
+   Arquivos: src/app/layout.tsx, src/components/layout/theme-toggle.tsx,
+             src/app/api/usuario/configuracoes/route.ts
+   - Tema (light/dark/system) salvo no banco via user_metadata
+   - Removido script inline de localStorage no layout
+   - grep confirma: zero ocorrências de localStorage/sessionStorage
+
+4. CORREÇÃO: Auth 'Não autorizado'
+   Arquivos: src/lib/supabase/auth/provider.tsx, src/lib/supabase/auth/server.ts,
+             src/app/api/usuario/configuracoes/route.ts, src/app/api/usuario/foto/route.ts
+   - Provider usa createBrowserClient do @supabase/ssr (cookies, não localStorage)
+   - getSupabaseWithAuth retorna cliente SSR autenticado para updateUser
+   - Rotas de usuário usam cliente autenticado (corrige erro 401)
+
+5. NOVO: Concursos — Baixar Todos
+   Arquivos: src/app/concursos/page.tsx, src/app/api/sync/batch/[loteria]/route.ts,
+             src/app/api/sync/batch-todas/route.ts (NOVO)
+   - Botão "Baixar Todos" sincroniza o histórico completo de uma vez
+   - Limite de batch ampliado de 200 → 1000 concursos
+   - Endpoint batch-todas sincroniza todas as loterias em uma chamada
+   - A página sincronizar usa batch-todas com fallback sequencial
+
+================================================================================
+MIGRAÇÕES NECESSÁRIAS (Executar no Supabase SQL Editor)
+================================================================================
+
+1. Migration nome dos jogos:
+   - Arquivo: database/migration_nome_jogos.sql
+   - Copiar e colar no Supabase SQL Editor e Executar
+   (ALTER TABLE jogos_gerados ADD COLUMN IF NOT EXISTS nome TEXT;)
+
+================================================================================
+VERSÃO: 2.4.1
+STATUS: Deployado
+================================================================================

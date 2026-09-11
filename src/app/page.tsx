@@ -74,6 +74,14 @@ function formatCurrency(value: number): string {
 function formatDate(dateStr: string): string {
   if (!dateStr) return "";
   try {
+    // Handle DD/MM/YYYY format from CAIXA API
+    if (dateStr.includes("/")) {
+      const parts = dateStr.split("/");
+      if (parts.length === 3) {
+        const [day, month, year] = parts;
+        return `${day}/${month}/${year}`;
+      }
+    }
     return new Date(dateStr).toLocaleDateString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
@@ -142,6 +150,18 @@ function ResultadoCard({ resultado, index }: { resultado: ResultadoLoteria; inde
                     {formatCurrency(resultado.valor_acumulado)}
                   </span>
                 </div>
+
+                {resultado.proximo_concurso && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground flex items-center gap-1">
+                      <TrendingUp className="h-3 w-3" />
+                      Próximo
+                    </span>
+                    <span className="font-bold text-emerald-500">
+                      {formatCurrency(resultado.proximo_concurso.acumulado)}
+                    </span>
+                  </div>
+                )}
 
                 {resultado.acumulou && (
                   <Badge variant="destructive" className="w-full justify-center text-xs">
