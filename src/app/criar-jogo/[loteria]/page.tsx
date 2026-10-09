@@ -1,14 +1,16 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, PenTool, Target, RotateCcw, CheckCircle2, Calendar, Coins, Save, Loader2, BarChart3, Plus, Minus } from "lucide-react";
-import { LOTERIAS, getLoteriaPorSlug, getPreco, getOpcoesQtd } from "@/lib/loterias";
+import { LOTERIAS, getLoteriaPorSlug, getPreco, getOpcoesQtd, getFaixaColunas } from "@/lib/loterias";
+import { obterRegra } from "@/modules/lottery";
 import { ShareGame } from "@/components/lottery/share-game";
+import { VolantePosicional, ExtrasVolante } from "@/components/lottery/volante";
 
 interface Analise {
   score: number;
@@ -25,6 +27,8 @@ export default function CriarJogoPage() {
   const loteria = getLoteriaPorSlug(slug);
 
   const [dezenas, setDezenas] = useState<number[]>([]);
+  const [colunas, setColunas] = useState<number[][]>([]);
+  const [extras, setExtras] = useState<Record<string, number[]>>({});
   const [analise, setAnalise] = useState<Analise | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
@@ -42,6 +46,19 @@ export default function CriarJogoPage() {
     return nums;
   }, [loteria]);
 
+  // Ao trocar de modalidade, reseta toda a seleção (dezenas, colunas, extras)
+  useEffect(() => {
+    const l = getLoteriaPorSlug(slug);
+    setDezenas([]);
+    setColunas(
+      l?.colunas
+        ? Array.from({ length: l.colunas.total_colunas }, () => [] as number[])
+        : []
+    );
+    setExtras({});
+    setAnalise(null);
+  }, [slug]);
+
   if (!loteria) {
     return (
       <div className="container mx-auto px-4 py-8 text-center">
@@ -52,6 +69,30 @@ export default function CriarJogoPage() {
       </div>
     );
   }
+
+  const posicional = loteria.mecanica === "posicional" && !!loteria.colunas;
+  const faixaPos = posicional ? getFaixaColunas(slug, qtdDezenas) : null;
+  const totalColunas = loteria.colunas?.total_colunas ?? 0;
+  const totalMarcado = colunas.reduce((s, c) => s + c.length, 0);
+
+  // Super Sete: dezenas = primeiro dígito de cada coluna (convenção do motor)
+  const dezenasAtuais = posicional ? colunas.map((c) => c[0] ?? -1) : dezenas;
+
+  const posCompleto =
+    posicional &&
+    !!faixaPos &&
+    colunas.length === totalColunas &&
+    totalMarcado === qtdDezenas &&
+    colunas.every((c) => c.length >= faixaPos.min && c.length <= faixaPos.max);
+
+  const extrasValidos = (loteria.componentes_extras ?? []).every((comp) => {
+    const vals = extras[comp.tipo] ?? [];
+    if (!comp.obrigatorio) return true;
+    return vals.length >= comp.qtd_min && vals.length <= comp.qtd_max;
+  });
+
+  const completo = posicional ? posCompleto : dezenas.length >= loteria.qtd_dezenas_min;
+  const selecionadasCount = posicional ? totalMarcado : dezenas.length;
 
   const toggleDezena = (num: number) => {
     setAnalise(null);
@@ -64,47 +105,66 @@ export default function CriarJogoPage() {
 
   const limparSelecao = () => {
     setDezenas([]);
+    setColunas(
+      loteria.colunas
+        ? Array.from({ length: loteria.colunas.total_colunas }, () => [] as number[])
+        : []
+    );
+    setExtras({});
+    setAnalise(null);
+  };
+
+  const mudarQtd = (qtd: number) => {
+    setQtdDezenas(qtd);
+    setDezenas([]);
+    if (loteria.colunas) {
+      setColunas(
+        Array.from({ length: loteria.colunas.total_colunas }, () => [] as number[])
+      );
+    }
     setAnalise(null);
   };
 
   const selecionarAleatorio = () => {
-    const copia = [...todosNumeros];
-    const selecionadas: number[] = [];
-    for (let i = 0; i < qtdDezenas; i++) {
-      const idx = Math.floor(Math.random() * copia.length);
-      selecionadas.push(copia.splice(idx, 1)[0]);
+    const resultado = obterRegra(loteria).gerarAleatorio({ loteria, qtdDezenas });
+    if (posicional) {
+      setColunas(resultado.colunas ?? []);
+    } else {
+      setDezenas([...resultado.dezenas].sort((a, b) => a - b));
     }
-    setDezenas(selecionadas.sort((a, b) => a - b));
+    if (resultado.extras) setExtras(resultado.extras);
     setAnalise(null);
   };
 
   const handleAnalisar = async () => {
-    if (dezenas.length < 2) return;
+    const base = dezenasAtuais;
+    if (posicional ? !posCompleto : dezenas.length < 2) return;
+    const dezenasParaAnalise = base.filter((d) => d >= 0);
 
     try {
       const res = await fetch(`/api/analisar/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dezenas }),
+        body: JSON.stringify({ dezenas: dezenasParaAnalise }),
       });
       if (res.ok) {
         const data = await res.json();
-        const paresCalc = dezenas.filter((d) => d % 2 === 0).length;
+        const paresCalc = dezenasParaAnalise.filter((d) => d % 2 === 0).length;
         setAnalise({
           score: data.score,
-          soma: data.estatisticas?.soma ?? dezenas.reduce((a, b) => a + b, 0),
+          soma: data.estatisticas?.soma ?? dezenasParaAnalise.reduce((a, b) => a + b, 0),
           pares: paresCalc,
-          impares: dezenas.length - paresCalc,
+          impares: dezenasParaAnalise.length - paresCalc,
           melhorEstrategia: data.explicacao?.split("—")[0]?.trim() || "Análise Completa",
         });
       }
     } catch {
-      const paresCalc = dezenas.filter((d) => d % 2 === 0).length;
+      const paresCalc = dezenasParaAnalise.filter((d) => d % 2 === 0).length;
       setAnalise({
         score: 0,
-        soma: dezenas.reduce((a, b) => a + b, 0),
+        soma: dezenasParaAnalise.reduce((a, b) => a + b, 0),
         pares: paresCalc,
-        impares: dezenas.length - paresCalc,
+        impares: dezenasParaAnalise.length - paresCalc,
         melhorEstrategia: "Erro na análise",
       });
     }
@@ -146,7 +206,14 @@ export default function CriarJogoPage() {
   };
 
   const handleSalvar = async () => {
-    if (dezenas.length < loteria.qtd_dezenas_min) return;
+    if (!completo || !extrasValidos) return;
+
+    const metadados: Record<string, unknown> = {};
+    if (posicional) metadados.colunas = colunas;
+    for (const comp of loteria.componentes_extras ?? []) {
+      const vals = extras[comp.tipo];
+      if (vals?.length) metadados[comp.tipo] = vals;
+    }
 
     setSalvando(true);
     try {
@@ -156,7 +223,13 @@ export default function CriarJogoPage() {
         body: JSON.stringify({
           loteria: loteria.id,
           estrategia: "manual",
-          jogos: [{ dezenas, score: analise?.score || null }],
+          jogos: [
+            {
+              dezenas: posicional ? colunas.map((c) => c[0]) : dezenas,
+              score: analise?.score || null,
+              metadados: Object.keys(metadados).length ? metadados : undefined,
+            },
+          ],
         }),
       });
 
@@ -241,7 +314,7 @@ export default function CriarJogoPage() {
         {opcoesQtd.length > 1 && (
           <section className="mb-4">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Quantidade de Dezenas
+              {posicional ? "Total de Números (7 colunas)" : "Quantidade de Dezenas"}
             </h2>
             <div className="flex flex-wrap gap-2 mb-3">
               {opcoesQtd.map(qtd => {
@@ -250,7 +323,7 @@ export default function CriarJogoPage() {
                 return (
                   <button
                     key={qtd}
-                    onClick={() => { setQtdDezenas(qtd); setDezenas([]); setAnalise(null); }}
+                    onClick={() => mudarQtd(qtd)}
                     className={`flex flex-col items-center px-3 py-2 rounded-lg border-2 transition-all ${
                       isSelected
                         ? "border-primary bg-primary/5 shadow-sm"
@@ -258,7 +331,7 @@ export default function CriarJogoPage() {
                     }`}
                   >
                     <span className={`text-sm font-bold ${isSelected ? "text-primary" : ""}`}>
-                      {qtd} dezenas
+                      {posicional ? `${qtd} números` : `${qtd} dezenas`}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
                       R$ {preco.toFixed(2).replace('.', ',')}
@@ -277,9 +350,7 @@ export default function CriarJogoPage() {
                 onClick={() => {
                   const idx = opcoesQtd.indexOf(qtdDezenas);
                   if (idx > 0) {
-                    setQtdDezenas(opcoesQtd[idx - 1]);
-                    setDezenas([]);
-                    setAnalise(null);
+                    mudarQtd(opcoesQtd[idx - 1]);
                   }
                 }}
                 aria-label="Diminuir dezenas"
@@ -292,9 +363,7 @@ export default function CriarJogoPage() {
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
                   if (!isNaN(val) && opcoesQtd.includes(val)) {
-                    setQtdDezenas(val);
-                    setDezenas([]);
-                    setAnalise(null);
+                    mudarQtd(val);
                   }
                 }}
                 className="w-16 h-10 text-center text-lg font-bold rounded-lg border border-input bg-background tabular-nums focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
@@ -310,9 +379,7 @@ export default function CriarJogoPage() {
                 onClick={() => {
                   const idx = opcoesQtd.indexOf(qtdDezenas);
                   if (idx < opcoesQtd.length - 1) {
-                    setQtdDezenas(opcoesQtd[idx + 1]);
-                    setDezenas([]);
-                    setAnalise(null);
+                    mudarQtd(opcoesQtd[idx + 1]);
                   }
                 }}
                 aria-label="Aumentar dezenas"
@@ -327,7 +394,7 @@ export default function CriarJogoPage() {
         <div className="mb-4 p-4 rounded-xl bg-card border border-border">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium text-muted-foreground">
-              Dezenas selecionadas
+              {posicional ? "Números marcados (7 colunas)" : "Dezenas selecionadas"}
             </span>
             <div className="flex items-center gap-3">
               <Badge variant="outline" className="text-xs gap-1">
@@ -335,15 +402,15 @@ export default function CriarJogoPage() {
                 R$ {precoAtual.toFixed(2).replace('.', ',')}
               </Badge>
               <span className="text-sm font-bold">
-                <span className={dezenas.length === qtdDezenas ? "text-emerald-500" : ""}>
-                  {dezenas.length}
+                <span className={selecionadasCount === qtdDezenas ? "text-emerald-500" : ""}>
+                  {selecionadasCount}
                 </span>
                 <span className="text-muted-foreground"> / {qtdDezenas}</span>
               </span>
             </div>
           </div>
 
-          {dezenas.length > 0 ? (
+          {!posicional && dezenas.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {dezenas.map((d) => (
                 <Badge
@@ -356,6 +423,12 @@ export default function CriarJogoPage() {
                 </Badge>
               ))}
             </div>
+          ) : posicional ? (
+            <p className="text-sm text-muted-foreground py-2">
+              {faixaPos
+                ? `Marque de ${faixaPos.min} a ${faixaPos.max} dígito${faixaPos.max > 1 ? "s" : ""} por coluna no volante abaixo`
+                : "Marque 1 dígito por coluna no volante abaixo"}
+            </p>
           ) : (
             <p className="text-sm text-muted-foreground py-2">
               Clique nos números abaixo para selecionar
@@ -369,7 +442,7 @@ export default function CriarJogoPage() {
             variant="outline"
             size="sm"
             onClick={limparSelecao}
-            disabled={dezenas.length === 0}
+            disabled={selecionadasCount === 0 && Object.keys(extras).length === 0}
             className="gap-1.5"
           >
             <RotateCcw className="h-3.5 w-3.5" />
@@ -386,49 +459,78 @@ export default function CriarJogoPage() {
           </Button>
         </div>
 
-        {/* Number Grid */}
+        {/* Number Grid / Volante posicional */}
         <Card className="mb-6">
           <CardContent className="p-4">
-            <div
-              className="grid gap-2"
-              style={{
-                gridTemplateColumns: `repeat(auto-fill, minmax(${loteria.universo_max >= 100 ? "2.25rem" : "2.75rem"}, 1fr))`,
-              }}
-            >
-              {todosNumeros.map((num) => {
-                const isSelected = dezenas.includes(num);
-                return (
-                  <button
-                    key={num}
-                    onClick={() => toggleDezena(num)}
-                    disabled={!isSelected && dezenas.length >= qtdDezenas}
-                    className={`
-                      aspect-square rounded-full text-sm font-mono font-medium
-                      transition-all duration-150 border-2
-                      ${isSelected
-                        ? "bg-primary text-primary-foreground border-primary shadow-md scale-105"
-                        : "bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5"
-                      }
-                      ${!isSelected && dezenas.length >= qtdDezenas
-                        ? "opacity-40 cursor-not-allowed"
-                        : "cursor-pointer active:scale-95"
-                      }
-                    `}
-                  >
-                    {String(num).padStart(2, "0")}
-                  </button>
-                );
-              })}
-            </div>
+            {posicional && loteria.colunas ? (
+              <VolantePosicional
+                loteria={loteria}
+                total={qtdDezenas}
+                colunas={colunas}
+                onChange={setColunas}
+              />
+            ) : (
+              <div
+                className="grid gap-2"
+                style={{
+                  gridTemplateColumns: `repeat(auto-fill, minmax(${loteria.universo_max >= 100 ? "2.25rem" : "2.75rem"}, 1fr))`,
+                }}
+              >
+                {todosNumeros.map((num) => {
+                  const isSelected = dezenas.includes(num);
+                  return (
+                    <button
+                      key={num}
+                      onClick={() => toggleDezena(num)}
+                      disabled={!isSelected && dezenas.length >= qtdDezenas}
+                      className={`
+                        aspect-square rounded-full text-sm font-mono font-medium
+                        transition-all duration-150 border-2
+                        ${isSelected
+                          ? "bg-primary text-primary-foreground border-primary shadow-md scale-105"
+                          : "bg-card text-foreground border-border hover:border-primary/50 hover:bg-primary/5"
+                        }
+                        ${!isSelected && dezenas.length >= qtdDezenas
+                          ? "opacity-40 cursor-not-allowed"
+                          : "cursor-pointer active:scale-95"
+                        }
+                      `}
+                    >
+                      {String(num).padStart(2, "0")}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
+
+        {/* Extras obrigatórios (Time, Mês, Trevos) */}
+        {!!loteria.componentes_extras?.length && (
+          <Card className="mb-6">
+            <CardContent className="p-4">
+              <ExtrasVolante
+                componentes={loteria.componentes_extras}
+                extras={extras}
+                onChange={(tipo, valores) =>
+                  setExtras((prev) => ({ ...prev, [tipo]: valores }))
+                }
+              />
+              {!extrasValidos && (
+                <p className="text-xs text-destructive mt-3">
+                  Complete os campos obrigatórios acima para salvar.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Analysis + Save */}
         <div className="flex gap-2 mb-6">
           <Button
             variant="outline"
             onClick={handleAnalisar}
-            disabled={dezenas.length < 2}
+            disabled={posicional ? !posCompleto : dezenas.length < 2}
             className="flex-1"
           >
             <BarChart3 className="h-4 w-4 mr-2" />
@@ -436,7 +538,7 @@ export default function CriarJogoPage() {
           </Button>
           <Button
             onClick={handleSalvar}
-            disabled={dezenas.length < loteria.qtd_dezenas_min || salvando}
+            disabled={!completo || !extrasValidos || salvando}
             className="flex-1"
           >
             {salvando ? (
@@ -486,9 +588,9 @@ export default function CriarJogoPage() {
         )}
 
         {/* Share */}
-        {dezenas.length >= loteria.qtd_dezenas_min && (
+        {completo && (
           <ShareGame
-            dezenas={dezenas}
+            dezenas={posicional ? colunas.map((c) => c[0]) : dezenas}
             loteria={loteria.nome}
             score={analise?.score || null}
           />

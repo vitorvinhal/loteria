@@ -145,7 +145,15 @@ export async function POST(request: Request) {
     const userId = session?.user?.id ?? null;
 
     const body = await request.json();
-    const { loteria, jogos } = body as { loteria?: string; jogos?: Array<{ dezenas: number[]; score: number | null; nome?: string }> };
+    const { loteria, jogos } = body as {
+      loteria?: string;
+      jogos?: Array<{
+        dezenas: number[];
+        score: number | null;
+        nome?: string;
+        metadados?: Record<string, unknown> | null;
+      }>;
+    };
 
     if (!loteria || !jogos || !Array.isArray(jogos) || jogos.length === 0) {
       return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
@@ -190,7 +198,12 @@ export async function POST(request: Request) {
     }
 
     // Inserir jogos
-    const jogosParaSalvar = jogos.map((j: { dezenas: number[]; score: number | null; nome?: string }) => ({
+    const jogosParaSalvar = jogos.map((j: {
+      dezenas: number[];
+      score: number | null;
+      nome?: string;
+      metadados?: Record<string, unknown> | null;
+    }) => ({
       lote_id: lote.id,
       usuario_id: userId,
       loteria_id: loteria,
@@ -198,6 +211,8 @@ export async function POST(request: Request) {
       estrategia_id: null,
       score: j.score || 0,
       score_breakdown: {},
+      metadados:
+        j.metadados && Object.keys(j.metadados).length > 0 ? j.metadados : null,
       origem: "manual",
       nome: j.nome || null,
     }));

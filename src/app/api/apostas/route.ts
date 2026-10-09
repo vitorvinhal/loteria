@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/db";
-import { getSession } from "@/lib/supabase/auth/server";
+import { getSession, getSupabaseWithAuth } from "@/lib/supabase/auth/server";
+import { LOTERIAS } from "@/lib/loterias";
 
 export async function GET() {
   try {
@@ -9,7 +9,7 @@ export async function GET() {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
     }
 
-    const supabase = getSupabase();
+    const supabase = await getSupabaseWithAuth();
 
     const { data: apostas, error } = await supabase
       .from("apostas")
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { loteria_id, dezenas, valor_apostado } = body;
+    const { loteria_id, dezenas, valor_apostado, metadados } = body;
 
     if (!loteria_id || !dezenas?.length || valor_apostado == null) {
       return NextResponse.json(
@@ -56,15 +56,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = getSupabase();
+    if (metadados != null && (typeof metadados !== "object" || Array.isArray(metadados))) {
+      return NextResponse.json({ error: "metadados deve ser um objeto" }, { status: 400 });
+    }
+
+    const loteria = LOTERIAS.find((l) => l.id === loteria_id || l.slug === loteria_id);
+    // Na mecânica posicional a ordem das dezenas importa (1 dígito por coluna);
+    // em conjunto, ordenamos para manter o formato histórico da tabela.
+    const dezenasSalvas = loteria?.mecanica === "posicional" ? dezenas : [...dezenas].sort((a: number, b: number) => a - b);
+
+    const supabase = await getSupabaseWithAuth();
 
     const { data: aposta, error } = await supabase
       .from("apostas")
       .insert({
         usuario_id: session.user.id,
         loteria_id,
-        dezenas: dezenas.sort((a: number, b: number) => a - b),
+        dezenas: dezenasSalvas,
         valor_apostado,
+        // A coluna só é enviada quando há metadados (e quando a migração
+        // existir); apostas simples continuam funcionando sem ela.
+        ...(metadados != null ? { metadados } : {}),
       })
       .select()
       .single();
@@ -73,6 +85,9 @@ export async function POST(request: NextRequest) {
       console.error("[API/apostas] Erro ao salvar aposta:", error);
       if (error.message?.includes("does not exist") || error.code === "42P01") {
         return NextResponse.json({ error: "Tabela apostas não existe. Execute a migração no painel do Supabase.", setupRequired: true }, { status: 503 });
+      }
+      if (error.code === "42703" || /metadados/i.test(error.message || "")) {
+        return NextResponse.json({ error: "Migração pendente: a coluna apostas.metadados ainda não existe (colunas/extras não podem ser salvos).", setupRequired: true }, { status: 503 });
       }
       return NextResponse.json({ error: "Erro ao salvar aposta" }, { status: 500 });
     }

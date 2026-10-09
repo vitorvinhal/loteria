@@ -268,6 +268,18 @@ function distribuirCanonico(colunas: ConfigColunas, total: number): number[] {
   return counts;
 }
 
+/**
+ * Faixa de números permitidos por coluna para um total de marcações
+ * (aposta múltipla do Super Sete). Ex.: total 8–14 → 1–2 por coluna.
+ */
+export function getFaixaColunas(slug: string, total: number): { min: number; max: number } | null {
+  const loteria = getLoteriaPorSlug(slug);
+  const faixa = loteria?.colunas?.faixas_por_coluna.find(
+    f => total >= f.total_min && total <= f.total_max
+  );
+  return faixa ? { min: faixa.min_coluna, max: faixa.max_coluna } : null;
+}
+
 export function getPreco(slug: string, qtd: number): number {
   const loteria = getLoteriaPorSlug(slug);
   if (!loteria) return 0;

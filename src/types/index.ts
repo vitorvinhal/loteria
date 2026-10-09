@@ -76,6 +76,15 @@ export interface Premiacao {
   premio: number;
 }
 
+export interface ResultadoAposta {
+  ganhou: boolean;
+  acertos: number;
+  total_dezenas: number;
+  dezenas_sorteadas: number[];
+  concurso_numero: number;
+  detalhes: string;
+}
+
 export interface Estrategia {
   id: string;
   slug: string;

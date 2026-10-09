@@ -1,9 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getLoteriaPorSlug } from "@/lib/loterias";
+import { obterRegra } from "@/modules/lottery";
+import type { JogoSorteado } from "@/modules/lottery";
+
+type JogoBolao =
+  | number[]
+  | {
+      dezenas: number[];
+      colunas?: number[][];
+      extras?: Record<string, number[]>;
+    };
 
 interface BolaoRequest {
-  jogos: number[][];
+  jogos: JogoBolao[];
   quantidade_cotas: number;
+}
+
+function paraJogoSorteado(j: JogoBolao): JogoSorteado {
+  if (Array.isArray(j)) return { dezenas: j };
+  return { dezenas: j.dezenas, colunas: j.colunas, extras: j.extras };
 }
 
 export async function POST(
@@ -31,17 +46,22 @@ export async function POST(
       );
     }
 
-    const custoTotal = loteria.preco_aposta_base * jogos.length;
+    // Custo real por jogo via o motor (múltipla do Super Sete, sistema da
+    // Mega, trevos da +Milionária etc.), não o preço base × quantidade.
+    const regra = obterRegra(loteria);
+    const custoTotal = jogos.reduce(
+      (soma, j) => soma + regra.custo(paraJogoSorteado(j), loteria),
+      0
+    );
     const custoPorCota = custoTotal / quantidade_cotas;
 
-    const projecoes = [
-      { acertos: 4, descricao: "Quadra" },
-      { acertos: 5, descricao: "Quina" },
-      { acertos: 6, descricao: "Sena" },
-    ].map(p => ({
-      ...p,
-      premio_estimado: p.acertos === 4 ? 1500 : p.acertos === 5 ? 35000 : 3500000,
-      por_cota: (p.acertos === 4 ? 1500 : p.acertos === 5 ? 35000 : 3500000) / quantidade_cotas,
+    // Projeções pelas faixas oficiais da modalidade; o valor do prêmio não é
+    // fabricado — fica null até vir de um concurso real.
+    const projecoes = loteria.regras_vitoria.map(regraVitoria => ({
+      acertos: regraVitoria.acertos_min,
+      descricao: regraVitoria.descricao,
+      premio_estimado: null as number | null,
+      por_cota: null as number | null,
     }));
 
     return NextResponse.json({

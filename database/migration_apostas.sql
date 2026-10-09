@@ -21,14 +21,18 @@ CREATE INDEX IF NOT EXISTS idx_apostas_data ON apostas(criado_em);
 ALTER TABLE apostas ENABLE ROW LEVEL SECURITY;
 
 -- Policies para apostas
+DROP POLICY IF EXISTS "Usuarios veem proprias apostas" ON apostas;
 CREATE POLICY "Usuarios veem proprias apostas" ON apostas
   FOR SELECT USING (usuario_id = auth.uid()::text);
 
+DROP POLICY IF EXISTS "Usuarios criam proprias apostas" ON apostas;
 CREATE POLICY "Usuarios criam proprias apostas" ON apostas
   FOR INSERT WITH CHECK (usuario_id = auth.uid()::text);
 
+DROP POLICY IF EXISTS "Usuarios atualizam proprias apostas" ON apostas;
 CREATE POLICY "Usuarios atualizam proprias apostas" ON apostas
   FOR UPDATE USING (usuario_id = auth.uid()::text);
 
+DROP POLICY IF EXISTS "Usuarios deletam proprias apostas" ON apostas;
 CREATE POLICY "Usuarios deletam proprias apostas" ON apostas
   FOR DELETE USING (usuario_id = auth.uid()::text);

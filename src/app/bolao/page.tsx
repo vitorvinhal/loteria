@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,10 +9,16 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Calculator, TrendingUp, Plus, Minus, X, Dices, Coins, RotateCcw } from "lucide-react";
 import { LOTERIAS, getPreco, getOpcoesQtd } from "@/lib/loterias";
+import { obterRegra, gerarExtras } from "@/modules/lottery";
+import type { JogoSorteado } from "@/modules/lottery";
+import { VolantePosicional, ExtrasVolante } from "@/components/lottery/volante";
+import type { Premiacao } from "@/types";
 
 interface Jogo {
   dezenas: number[];
   score: number;
+  colunas?: number[][];
+  extras?: Record<string, number[]>;
 }
 
 export default function BolaoPage() {
@@ -20,6 +26,9 @@ export default function BolaoPage() {
   const [quantidadeCotas, setQuantidadeCotas] = useState(10);
   const [jogos, setJogos] = useState<Jogo[]>([]);
   const [dezenasSelecionadas, setDezenasSelecionadas] = useState<number[]>([]);
+  const [colunasSel, setColunasSel] = useState<number[][]>([]);
+  const [extrasSel, setExtrasSel] = useState<Record<string, number[]>>({});
+  const [premiacoes, setPremiacoes] = useState<Premiacao[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [qtdDezenas, setQtdDezenas] = useState<number>(LOTERIAS.find(l => l.slug === "megasena")?.qtd_dezenas_padrao || 6);
   const [emailConvidado, setEmailConvidado] = useState("");
@@ -27,21 +36,72 @@ export default function BolaoPage() {
   const [convidando, setConvidando] = useState(false);
 
   const loteria = LOTERIAS.find(l => l.slug === loteriaSlug);
+  const posicional = loteria?.mecanica === "posicional" && !!loteria?.colunas;
+  const componentesExtras = loteria?.componentes_extras ?? [];
+  const extrasFaltando = componentesExtras.filter(
+    c => c.obrigatorio && (extrasSel[c.tipo]?.length ?? 0) < c.qtd_min
+  );
+  const baseOk = posicional ? colunasSel.every(c => c.length > 0) : dezenasSelecionadas.length > 0;
+  const selecaoPronta = !!loteria && baseOk && extrasFaltando.length === 0;
 
-  const opcoesQtd = useMemo(() => getOpcoesQtd(loteriaSlug), [loteriaSlug]);
-  const precoAtual = getPreco(loteriaSlug, qtdDezenas);
+  const opcoesQtd = getOpcoesQtd(loteriaSlug);
 
-  const custoTotal = loteria ? precoAtual * jogos.length : 0;
+  const extrasPreenchidos = (): Record<string, number[]> => {
+    const out: Record<string, number[]> = {};
+    for (const comp of componentesExtras) {
+      const v = extrasSel[comp.tipo] ?? [];
+      if (v.length > 0) out[comp.tipo] = v;
+    }
+    return out;
+  };
+
+  /*BISSECT*/ const precoAtual = (() => {
+    if (!loteria) return 0;
+    if (selecaoPronta) {
+      const jogo: JogoSorteado = {
+        dezenas: posicional ? colunasSel.map(c => c[0]) : [...dezenasSelecionadas].sort((a, b) => a - b),
+        colunas: posicional ? colunasSel : undefined,
+        extras: componentesExtras.length ? extrasPreenchidos() : undefined,
+      };
+      return obterRegra(loteria).custo(jogo, loteria);
+    }
+    return getPreco(loteriaSlug, qtdDezenas);
+  })();
+
+  const custoTotal = !loteria
+    ? 0
+    : jogos.reduce(
+        (s, j) => s + obterRegra(loteria).custo({ dezenas: j.dezenas, colunas: j.colunas, extras: j.extras }, loteria),
+        0
+      );
   const custoPorCota = quantidadeCotas > 0 ? custoTotal / quantidadeCotas : 0;
 
-  const todosNumeros = useMemo(() => {
-    if (!loteria) return [];
-    const nums: number[] = [];
-    for (let i = loteria.universo_min; i <= loteria.universo_max; i++) {
-      nums.push(i);
-    }
-    return nums;
-  }, [loteria]);
+  // Prêmios reais do último concurso (sem números fabricados).
+  useEffect(() => {
+    let ativo = true;
+    setPremiacoes([]);
+    fetch(`/api/sync/${loteriaSlug}`)
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (ativo && Array.isArray(d?.concurso?.premiacoes)) setPremiacoes(d.concurso.premiacoes); })
+      .catch(() => { /* sem prêmios: exibe "—" */ });
+    return () => { ativo = false; };
+  }, [loteriaSlug]);
+
+  const selecionarLoteria = (slug: string) => {
+    setLoteriaSlug(slug);
+    setDezenasSelecionadas([]);
+    setExtrasSel({});
+    const nova = LOTERIAS.find(l => l.slug === slug);
+    setQtdDezenas(nova?.qtd_dezenas_padrao || 6);
+    setColunasSel(
+      nova?.colunas ? Array.from({ length: nova.colunas.total_colunas }, () => [] as number[]) : []
+    );
+  };
+
+  const todosNumeros: number[] = [];
+  if (loteria) {
+    for (let i = loteria.universo_min; i <= loteria.universo_max; i++) todosNumeros.push(i);
+  }
 
   const toggleDezena = (num: number) => {
     if (dezenasSelecionadas.includes(num)) {
@@ -53,24 +113,52 @@ export default function BolaoPage() {
 
   const limparSelecao = () => {
     setDezenasSelecionadas([]);
+    setColunasSel(prev => prev.map(() => []));
+    setExtrasSel({});
   };
 
   const selecionarAleatorio = () => {
     if (!loteria) return;
-    const copia = [...todosNumeros];
-    const selecionadas: number[] = [];
-    for (let i = 0; i < qtdDezenas; i++) {
-      const idx = Math.floor(Math.random() * copia.length);
-      selecionadas.push(copia.splice(idx, 1)[0]);
+    const jogo = obterRegra(loteria).gerarAleatorio({
+      loteria,
+      qtdDezenas,
+      extras: gerarExtras(loteria),
+    });
+    if (jogo.colunas && jogo.colunas.length > 0) {
+      setColunasSel(jogo.colunas);
+      setDezenasSelecionadas([]);
+    } else {
+      setDezenasSelecionadas([...jogo.dezenas].sort((a, b) => a - b));
     }
-    setDezenasSelecionadas(selecionadas.sort((a, b) => a - b));
+    if (jogo.extras) setExtrasSel(jogo.extras);
   };
 
   const adicionarJogo = () => {
-    if (!loteria || dezenasSelecionadas.length < loteria.qtd_dezenas_min) return;
+    if (!loteria || !selecaoPronta) return;
 
-    setJogos(prev => [...prev, { dezenas: [...dezenasSelecionadas], score: 0 }]);
+    if (posicional && loteria.colunas) {
+      const total = colunasSel.reduce((s, c) => s + c.length, 0);
+      if (colunasSel.some(c => c.length === 0)) return;
+      if (total < loteria.qtd_dezenas_min || total > loteria.qtd_dezenas_max) return;
+      setJogos(prev => [...prev, {
+        dezenas: colunasSel.map(c => c[0]),
+        score: 0,
+        colunas: colunasSel.map(c => [...c]),
+        ...(componentesExtras.length ? { extras: extrasPreenchidos() } : {}),
+      }]);
+      setColunasSel(prev => prev.map(() => []));
+      setExtrasSel({});
+      return;
+    }
+
+    if (dezenasSelecionadas.length < loteria.qtd_dezenas_min) return;
+    setJogos(prev => [...prev, {
+      dezenas: [...dezenasSelecionadas].sort((a, b) => a - b),
+      score: 0,
+      ...(componentesExtras.length ? { extras: extrasPreenchidos() } : {}),
+    }]);
     setDezenasSelecionadas([]);
+    setExtrasSel({});
   };
 
   const removerJogo = (index: number) => {
@@ -95,9 +183,11 @@ export default function BolaoPage() {
 
       if (response.ok) {
         const data = await response.json();
-        const novosJogos = data.jogos.map((j: Jogo) => ({
+        const novosJogos: Jogo[] = data.jogos.map((j: Jogo & { extras?: Record<string, number[]> }) => ({
           dezenas: j.dezenas,
           score: j.score,
+          colunas: j.colunas,
+          extras: j.extras,
         }));
         setJogos(prev => [...prev, ...novosJogos]);
       }
@@ -143,26 +233,15 @@ export default function BolaoPage() {
   };
 
   const projecoes = loteria?.regras_vitoria.map(regra => {
-    const premiosEstimados: Record<number, number> = {
-      4: 1500,
-      5: 35000,
-      6: 3500000,
-      11: 2000,
-      12: 5000,
-      13: 50000,
-      14: 500000,
-      15: 5000000,
-      2: 500,
-      3: 2000,
-      7: 100000,
-    };
-
-    const premio = premiosEstimados[regra.acertos_min] || 1000;
+    const premiacao =
+      premiacoes.find(p => p.acertos === regra.acertos_min && p.premio > 0) ??
+      premiacoes.find(p => p.acertos === regra.acertos_min);
+    const premio = premiacao?.premio ?? null;
     return {
       acertos: regra.acertos_min,
       descricao: regra.descricao,
-      premioEstimado: premio,
-      porCota: quantidadeCotas > 0 ? premio / quantidadeCotas : 0,
+      premio,
+      porCota: premio != null && quantidadeCotas > 0 ? premio / quantidadeCotas : null,
     };
   }) || [];
 
@@ -186,7 +265,7 @@ export default function BolaoPage() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label>Loteria</Label>
-              <Select value={loteriaSlug} onValueChange={(v) => { if (v) { setLoteriaSlug(v); setDezenasSelecionadas([]); const nova = LOTERIAS.find(l => l.slug === v); setQtdDezenas(nova?.qtd_dezenas_padrao || 6); } }}>
+              <Select value={loteriaSlug} onValueChange={(v) => { if (v) selecionarLoteria(v); }}>
                 <SelectTrigger className="w-full h-11">
                   <SelectValue />
                 </SelectTrigger>
@@ -272,7 +351,7 @@ export default function BolaoPage() {
       {opcoesQtd.length > 1 && (
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Quantidade de Dezenas</CardTitle>
+            <CardTitle>{posicional ? "Total de Números (7 colunas)" : "Quantidade de Dezenas"}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
@@ -282,7 +361,7 @@ export default function BolaoPage() {
                 return (
                   <button
                     key={qtd}
-                    onClick={() => { setQtdDezenas(qtd); setDezenasSelecionadas([]); }}
+                    onClick={() => { setQtdDezenas(qtd); limparSelecao(); }}
                     className={`flex flex-col items-center px-3 py-2 rounded-lg border-2 transition-all cursor-pointer ${
                       isSelected
                         ? "border-primary bg-primary/5 shadow-sm"
@@ -290,7 +369,7 @@ export default function BolaoPage() {
                     }`}
                   >
                     <span className={`text-sm font-bold ${isSelected ? "text-primary" : ""}`}>
-                      {qtd} dezenas
+                      {posicional ? `${qtd} total` : `${qtd} dezenas`}
                     </span>
                     <span className="text-[10px] text-muted-foreground">
                       R$ {preco.toFixed(2).replace('.', ',')}
@@ -337,9 +416,11 @@ export default function BolaoPage() {
             <>
               <div className="flex items-center justify-between">
                 <Label className="flex items-center gap-2">
-                  <span>Seu Jogo</span>
+                  <span>{posicional ? "Seu Jogo (7 colunas)" : "Seu Jogo"}</span>
                   <span className="text-xs text-muted-foreground font-normal">
-                    {dezenasSelecionadas.length} / {qtdDezenas}
+                    {posicional
+                      ? `${colunasSel.reduce((s, c) => s + c.length, 0)} / ${qtdDezenas}`
+                      : `${dezenasSelecionadas.length} / ${qtdDezenas}`}
                   </span>
                 </Label>
                 <div className="flex items-center gap-1">
@@ -350,53 +431,72 @@ export default function BolaoPage() {
                 </div>
               </div>
 
-              {dezenasSelecionadas.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-muted/30">
-                  {dezenasSelecionadas.map(d => (
-                    <Badge key={d} variant="secondary" className="text-sm px-2.5 py-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive" onClick={() => toggleDezena(d)}>
-                      {String(d).padStart(2, "0")} <span className="ml-1 text-xs opacity-60">✕</span>
-                    </Badge>
-                  ))}
-                </div>
+              {posicional && loteria.colunas ? (
+                <VolantePosicional
+                  loteria={loteria}
+                  total={qtdDezenas}
+                  colunas={colunasSel}
+                  onChange={setColunasSel}
+                />
+              ) : (
+                <>
+                  {dezenasSelecionadas.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-muted/30">
+                      {dezenasSelecionadas.map(d => (
+                        <Badge key={d} variant="secondary" className="text-sm px-2.5 py-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive" onClick={() => toggleDezena(d)}>
+                          {String(d).padStart(2, "0")} <span className="ml-1 text-xs opacity-60">✕</span>
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="p-3 rounded-xl border border-muted bg-card/50">
+                    <div
+                      className="grid gap-1.5"
+                      style={{
+                        gridTemplateColumns: `repeat(auto-fill, minmax(${(loteria?.universo_max || 99) >= 80 ? "2rem" : "2.5rem"}, 1fr))`,
+                      }}
+                    >
+                      {todosNumeros.map(numero => {
+                        const isSelected = dezenasSelecionadas.includes(numero);
+                        const atLimit = !isSelected && dezenasSelecionadas.length >= qtdDezenas;
+                        return (
+                          <button
+                            key={numero}
+                            type="button"
+                            disabled={atLimit}
+                            onClick={() => toggleDezena(numero)}
+                            className={`aspect-square rounded-full text-sm font-bold tabular-nums transition-all duration-150 cursor-pointer flex items-center justify-center ${
+                              isSelected
+                                ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-110 ring-2 ring-primary/40"
+                                : atLimit
+                                  ? "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
+                                  : "bg-muted text-foreground hover:bg-primary/15 hover:text-primary hover:scale-110 hover:shadow-md border border-border/50"
+                            }`}
+                          >
+                            {String(numero).padStart(2, "0")}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
               )}
 
-              <div className="p-3 rounded-xl border border-muted bg-card/50">
-                <div
-                  className="grid gap-1.5"
-                  style={{
-                    gridTemplateColumns: `repeat(auto-fill, minmax(${(loteria?.universo_max || 99) >= 80 ? "2rem" : "2.5rem"}, 1fr))`,
-                  }}
-                >
-                  {todosNumeros.map(numero => {
-                    const isSelected = dezenasSelecionadas.includes(numero);
-                    const atLimit = !isSelected && dezenasSelecionadas.length >= qtdDezenas;
-                    return (
-                      <button
-                        key={numero}
-                        type="button"
-                        disabled={atLimit}
-                        onClick={() => toggleDezena(numero)}
-                        className={`aspect-square rounded-full text-sm font-bold tabular-nums transition-all duration-150 cursor-pointer flex items-center justify-center ${
-                          isSelected
-                            ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-110 ring-2 ring-primary/40"
-                            : atLimit
-                              ? "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
-                              : "bg-muted text-foreground hover:bg-primary/15 hover:text-primary hover:scale-110 hover:shadow-md border border-border/50"
-                        }`}
-                      >
-                        {String(numero).padStart(2, "0")}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
+              {componentesExtras.length > 0 && (
+                <ExtrasVolante
+                  componentes={componentesExtras}
+                  extras={extrasSel}
+                  onChange={(tipo, valores) => setExtrasSel(prev => ({ ...prev, [tipo]: valores }))}
+                />
+              )}
 
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={limparSelecao}
-                  disabled={dezenasSelecionadas.length === 0}
+                  disabled={!baseOk && Object.keys(extrasPreenchidos()).length === 0}
                 >
                   <RotateCcw className="h-3.5 w-3.5 mr-1" />
                   Limpar
@@ -411,7 +511,7 @@ export default function BolaoPage() {
                 </Button>
                 <Button
                   onClick={adicionarJogo}
-                  disabled={dezenasSelecionadas.length < loteria.qtd_dezenas_min}
+                  disabled={!selecaoPronta || (!posicional && dezenasSelecionadas.length < loteria.qtd_dezenas_min)}
                   className="ml-auto"
                 >
                   <Plus className="h-4 w-4 mr-1" />
@@ -427,12 +527,26 @@ export default function BolaoPage() {
                 <div key={index} className="flex items-center justify-between p-2 border rounded-lg">
                   <div className="flex items-center gap-4">
                     <span className="text-sm text-muted-foreground w-8">#{index + 1}</span>
-                    <div className="flex gap-1">
-                      {jogo.dezenas.map(d => (
-                        <Badge key={d} variant="outline" className="text-xs">
-                          {String(d).padStart(2, "0")}
-                        </Badge>
-                      ))}
+                    <div className="flex flex-wrap gap-1">
+                      {jogo.colunas && jogo.colunas.length > 0
+                        ? jogo.colunas.map((c, ci) => (
+                            <Badge key={ci} variant="outline" className="text-xs font-mono">
+                              C{ci + 1}: {c.join(" ")}
+                            </Badge>
+                          ))
+                        : jogo.dezenas.map(d => (
+                            <Badge key={d} variant="outline" className="text-xs">
+                              {String(d).padStart(2, "0")}
+                            </Badge>
+                          ))}
+                      {jogo.extras &&
+                        Object.entries(jogo.extras)
+                          .filter(([, v]) => v.length > 0)
+                          .map(([tipo, v]) => (
+                            <Badge key={tipo} variant="outline" className="text-xs text-emerald-600">
+                              {tipo === "trevo" ? "🍀" : tipo === "time" ? "⚽" : "📅"} {v.join(" ")}
+                            </Badge>
+                          ))}
                     </div>
                     {jogo.score > 0 && (
                       <Badge variant="secondary">{jogo.score}</Badge>
@@ -516,7 +630,9 @@ export default function BolaoPage() {
             Projeções de Premiação
           </CardTitle>
           <CardDescription>
-            Valores estimados baseados no prêmio atual. Não é garantia.
+            {premiacoes.length > 0
+              ? "Valores do último concurso oficial, repartidos por cota. Não é garantia."
+              : "Prêmios do último concurso indisponíveis no momento. Não é garantia."}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -532,10 +648,14 @@ export default function BolaoPage() {
                     <p className="font-medium">{proj.acertos} acertos</p>
                     <p className="text-sm text-muted-foreground">{proj.descricao}</p>
                   </div>
-                  <Badge variant="default" className="text-lg">
-                    R$ {proj.porCota.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    <span className="text-xs ml-1">/cota</span>
-                  </Badge>
+                  {proj.porCota != null ? (
+                    <Badge variant="default" className="text-lg">
+                      R$ {proj.porCota.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      <span className="text-xs ml-1">/cota</span>
+                    </Badge>
+                  ) : (
+                    <Badge variant="secondary" className="text-lg">—</Badge>
+                  )}
                 </div>
               ))}
             </div>

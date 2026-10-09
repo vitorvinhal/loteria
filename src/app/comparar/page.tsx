@@ -10,6 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input";
 import { GitCompare, CheckCircle2, XCircle, Trophy, BarChart3, Loader2, User } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
+import { VolantePosicional, ExtrasVolante } from "@/components/lottery/volante";
+import { extrasDoConcurso } from "@/modules/lottery/sorteio";
 import type { Loteria, Concurso } from "@/types";
 
 interface GradeAcerto {
@@ -31,6 +33,15 @@ interface ComparacaoResultado {
   ganhadores: number;
   faixaPremio: string;
   camuflagem?: boolean;
+  /** Dupla Sena: resultado do 2º sorteio. */
+  acertos2?: number[];
+  erros2?: number[];
+  grades2?: GradeAcerto[];
+  valorPremio2?: number;
+  ganhadores2?: number;
+  faixaPremio2?: string;
+  /** Extras: "🍀 Trevos: 1/2" · "⚽ Time: ✓" etc. */
+  extraInfo?: string[];
 }
 
 interface LoteFromAPI {
@@ -40,7 +51,66 @@ interface LoteFromAPI {
   criado_em: string;
   criado_por: string | null;
   criador_avatar_url: string | null;
-  jogos: { id: string; dezenas: number[]; score: number | null; nome?: string | null; score_breakdown?: { camuflagem?: boolean } | null }[];
+  jogos: {
+    id: string;
+    dezenas: number[];
+    score: number | null;
+    nome?: string | null;
+    score_breakdown?: { camuflagem?: boolean } | null;
+    metadados?: ({ colunas?: number[][] } & Record<string, unknown>) | null;
+  }[];
+}
+
+/** Conta acertos de cada extra do jogo contra o sorteio. */
+function conferirExtras(
+  loteria: Loteria,
+  extrasJogo: Record<string, number[]>,
+  extrasSorteio: Record<string, number[]>
+): Record<string, number> {
+  const contagem: Record<string, number> = {};
+  for (const comp of loteria.componentes_extras ?? []) {
+    const doJogo = extrasJogo[comp.tipo] ?? [];
+    const doSorteio = extrasSorteio[comp.tipo] ?? [];
+    if (doJogo.length && doSorteio.length) {
+      contagem[comp.tipo] = doJogo.filter(v => doSorteio.includes(v)).length;
+    }
+  }
+  return contagem;
+}
+
+function encontrarRegraComExtras(
+  loteria: Loteria,
+  acertos: number,
+  extrasAcertados: Record<string, number>
+) {
+  const candidatos = loteria.regras_vitoria.filter(
+    (r) => acertos >= r.acertos_min && acertos <= r.acertos_max
+  );
+  if (candidatos.length <= 1) return candidatos[0] ?? null;
+  if (loteria.slug === "maismilionaria") {
+    const trevos = extrasAcertados.trevo ?? 0;
+    const comDois = candidatos.find((c) => /2\s*trev/i.test(c.descricao));
+    const semDois = candidatos.find((c) => !/2\s*trev/i.test(c.descricao));
+    if (trevos >= 2) return comDois ?? candidatos[0];
+    if (trevos >= 1 || (semDois && /nenhum/i.test(semDois.descricao))) {
+      return semDois ?? null;
+    }
+    return null;
+  }
+  return candidatos[0];
+}
+
+function melhorPremio(
+  premiacoes: Concurso["premiacoes"],
+  acertos: number
+): { valor: number; ganhadores: number; descricao: string } {
+  const ordenadas = [...premiacoes].sort((a, b) => b.acertos - a.acertos);
+  for (const p of ordenadas) {
+    if (acertos >= p.acertos && p.acertos > 0 && p.premio > 0) {
+      return { valor: p.premio, ganhadores: p.ganhadores, descricao: p.descricao };
+    }
+  }
+  return { valor: 0, ganhadores: 0, descricao: "" };
 }
 
 function calcularEstatisticas(dezenas: number[]) {
@@ -100,42 +170,137 @@ function calcularGrades(acertos: number, loteria: Loteria): GradeAcerto[] {
   return grades.filter((g) => acertos >= g.qtd && g.qtd > 0).slice(0, 1);
 }
 
-function estimarPremio(acertos: number, loteria: Loteria): { texto: string; valor: number } {
-  const regra = loteria.regras_vitoria.find((r) => acertos >= r.acertos_min && acertos <= r.acertos_max);
-  return { texto: regra ? regra.descricao : "Sem premiação", valor: 0 };
-}
+function compararJogo(
+  dezenas: number[],
+  resultado: Concurso,
+  loteria: Loteria,
+  nome?: string,
+  camuflagem?: boolean,
+  metadados?: ({ colunas?: number[][] } & Record<string, unknown>) | null
+): ComparacaoResultado {
+  const posicional = loteria.mecanica === "posicional";
 
-function compararJogo(dezenas: number[], resultado: Concurso, loteria: Loteria, nome?: string, camuflagem?: boolean): ComparacaoResultado {
-  const resultadoSet = new Set(resultado.dezenas_sorteadas);
-  const posicional = loteria.mecanica === 'posicional';
-  const acertos = posicional
-    ? dezenas.filter((d, i) => d === resultado.dezenas_sorteadas[i])
-    : dezenas.filter((d) => resultadoSet.has(d)).sort((a, b) => a - b);
-  const erros = posicional
-    ? dezenas.filter((d, i) => d !== resultado.dezenas_sorteadas[i])
-    : dezenas.filter((d) => !resultadoSet.has(d)).sort((a, b) => a - b);
-  const percentual = dezenas.length > 0 ? Math.round((acertos.length / dezenas.length) * 100) : 0;
-  const grades = calcularGrades(acertos.length, loteria);
-  const estatisticas = calcularEstatisticas(dezenas);
-  const premio = estimarPremio(acertos.length, loteria);
-
-  let valorPremio = 0;
-  let ganhadores = 0;
-  let faixaPremio = premio.texto;
-  const premiacoes = (resultado as unknown as { premiacoes?: Array<{ descricao: string; acertos: number; ganhadores: number; premio: number }> }).premiacoes;
-  if (Array.isArray(premiacoes) && premiacoes.length > 0) {
-    const faixasOrdenadas = [...premiacoes].sort((a, b) => b.acertos - a.acertos);
-    for (const p of faixasOrdenadas) {
-      if (acertos.length >= p.acertos && p.acertos > 0 && p.premio > 0) {
-        valorPremio = p.premio;
-        ganhadores = p.ganhadores;
-        faixaPremio = p.descricao || premio.texto;
-        break;
-      }
+  // Extras do jogo (salvos em metadados) contra os sorteados (raw da fonte)
+  const extrasJogo: Record<string, number[]> = {};
+  for (const comp of loteria.componentes_extras ?? []) {
+    const v = metadados?.[comp.tipo];
+    if (Array.isArray(v)) extrasJogo[comp.tipo] = (v as unknown[]).map(Number);
+  }
+  const extrasSorteio = extrasDoConcurso(resultado);
+  const extrasAcertados = conferirExtras(loteria, extrasJogo, extrasSorteio);
+  const extraInfo: string[] = [];
+  for (const comp of loteria.componentes_extras ?? []) {
+    const doJogo = extrasJogo[comp.tipo] ?? [];
+    const doSorteio = extrasSorteio[comp.tipo] ?? [];
+    if (doJogo.length && doSorteio.length) {
+      const n = extrasAcertados[comp.tipo] ?? 0;
+      const icone = comp.tipo === "trevo" ? "🍀" : comp.tipo === "time" ? "⚽" : "📅";
+      extraInfo.push(`${icone} ${comp.nome}: ${n}/${doJogo.length}`);
     }
   }
 
-  return { nome, dezenas, acertos, erros, percentual, grades, estatisticas, premioEstimado: faixaPremio, valorPremio, ganhadores, faixaPremio, camuflagem };
+  const colunasJogo = Array.isArray(metadados?.colunas)
+    ? (metadados.colunas as number[][])
+    : undefined;
+
+  let acertos: number[] = [];
+  let erros: number[] = [];
+  let acertos2: number[] | undefined;
+  let erros2: number[] | undefined;
+  const sorteio = resultado.dezenas_sorteadas;
+
+  if (posicional) {
+    // Conferência coluna a coluna: aposta múltipla acerta se QUALQUER
+    // dígito marcado na coluna coincidir com o sorteado na mesma posição.
+    for (let col = 0; col < dezenas.length; col++) {
+      const marcados = colunasJogo?.[col];
+      const hit =
+        marcados && marcados.length > 0
+          ? marcados.includes(sorteio[col])
+          : dezenas[col] === sorteio[col];
+      if (hit) acertos.push(sorteio[col]);
+      else erros.push(dezenas[col]);
+    }
+  } else if (loteria.slug === "duplasena" && sorteio.length === 12) {
+    // Dupla Sena: 6 dezenas do 1º sorteio + 6 do 2º, conferidos à parte.
+    const set1 = new Set(sorteio.slice(0, 6));
+    const set2 = new Set(sorteio.slice(6, 12));
+    acertos = dezenas.filter((d) => set1.has(d)).sort((a, b) => a - b);
+    erros = dezenas.filter((d) => !set1.has(d)).sort((a, b) => a - b);
+    acertos2 = dezenas.filter((d) => set2.has(d)).sort((a, b) => a - b);
+    erros2 = dezenas.filter((d) => !set2.has(d)).sort((a, b) => a - b);
+  } else {
+    const resultadoSet = new Set(sorteio);
+    acertos = dezenas.filter((d) => resultadoSet.has(d)).sort((a, b) => a - b);
+    erros = dezenas.filter((d) => !resultadoSet.has(d)).sort((a, b) => a - b);
+  }
+
+  const acertosBase = posicional
+    ? acertos.length
+    : acertos2
+      ? Math.max(acertos.length, acertos2.length)
+      : acertos.length;
+  const percentual = dezenas.length > 0 ? Math.round((acertosBase / dezenas.length) * 100) : 0;
+
+  let grades = calcularGrades(acertos.length, loteria);
+  let grades2: GradeAcerto[] | undefined;
+  if (acertos2) {
+    grades2 = calcularGrades(acertos2.length, loteria);
+    // Junta as melhores classificações dos dois sorteios (sem duplicar).
+    const vistos = new Set(grades.map((g) => g.nome));
+    grades = [...grades, ...grades2.filter((g) => !vistos.has(g.nome))];
+  }
+
+  const estatisticas = calcularEstatisticas(dezenas);
+  const regra = encontrarRegraComExtras(loteria, acertosBase, extrasAcertados);
+  let faixaPremio = regra ? regra.descricao : "Sem premiação";
+
+  const premiacoes = resultado.premiacoes ?? [];
+  let valorPremio = 0;
+  let ganhadores = 0;
+  let valorPremio2 = 0;
+  let ganhadores2 = 0;
+  let faixaPremio2: string | undefined;
+
+  if (acertos2 && premiacoes.length >= 4 && premiacoes.length % 2 === 0) {
+    // Dupla Sena: metade das faixas para cada sorteio (6,5,4,3 × 2).
+    const meio = Math.floor(premiacoes.length / 2);
+    const p1 = melhorPremio(premiacoes.slice(0, meio), acertos.length);
+    const p2 = melhorPremio(premiacoes.slice(meio), acertos2.length);
+    valorPremio = p1.valor;
+    ganhadores = p1.ganhadores;
+    if (p1.descricao) faixaPremio = p1.descricao;
+    valorPremio2 = p2.valor;
+    ganhadores2 = p2.ganhadores;
+    faixaPremio2 = p2.descricao || undefined;
+  } else if (premiacoes.length > 0) {
+    const p1 = melhorPremio(premiacoes, acertosBase);
+    valorPremio = p1.valor;
+    ganhadores = p1.ganhadores;
+    if (p1.descricao) faixaPremio = p1.descricao;
+  }
+
+  return {
+    nome,
+    dezenas,
+    acertos,
+    erros,
+    percentual,
+    grades,
+    estatisticas,
+    premioEstimado: faixaPremio,
+    valorPremio,
+    ganhadores,
+    faixaPremio,
+    camuflagem,
+    acertos2,
+    erros2,
+    grades2,
+    valorPremio2,
+    ganhadores2,
+    faixaPremio2,
+    extraInfo: extraInfo.length ? extraInfo : undefined,
+  };
 }
 
 type ModoComparacao = "manual" | "lote";
@@ -159,7 +324,10 @@ export default function CompararPage() {
   const [filtroNome, setFiltroNome] = useState<string>('');
   const [loteExpandidoId, setLoteExpandidoId] = useState<string | null>(null);
   const [loteResultadoExpandido, setLoteResultadoExpandido] = useState(true);
+  const [colunasSel, setColunasSel] = useState<number[][]>([]);
+  const [extrasSel, setExtrasSel] = useState<Record<string, number[]>>({});
   const loteria = LOTERIAS.find((l) => l.slug === loteriaSlug) || LOTERIAS[0];
+  const posicional = loteria.mecanica === "posicional" && !!loteria.colunas;
   const [agora, setAgora] = useState(0);
 
   useEffect(() => {
@@ -187,7 +355,18 @@ export default function CompararPage() {
     finally { setCarregando(false); }
   }, [loteria.slug]);
 
-  useEffect(() => { buscarResultado(); setComparacoes([]); setDezenasSelecionadas([]); setLoteSelecionadoId(""); }, [buscarResultado]);
+  useEffect(() => {
+    buscarResultado();
+    setComparacoes([]);
+    setDezenasSelecionadas([]);
+    setColunasSel(
+      loteria.colunas
+        ? Array.from({ length: loteria.colunas.total_colunas }, () => [] as number[])
+        : []
+    );
+    setExtrasSel({});
+    setLoteSelecionadoId("");
+  }, [buscarResultado, loteria.colunas]);
 
   useEffect(() => {
     const loteId = searchParams.get("loteId");
@@ -208,7 +387,7 @@ export default function CompararPage() {
     const loteLoteria = LOTERIAS.find((x) => x.id === lote.loteria) || loteria;
     setLoteriaSlug(loteLoteria.slug);
     setModoComparacao("lote");
-    setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true)).sort((a, b) => b.percentual - a.percentual));
+    setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true, j.metadados)).sort((a, b) => b.percentual - a.percentual));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loteDaUrl, resultado, carregandoLotes, lotes]);
 
@@ -228,7 +407,7 @@ export default function CompararPage() {
         const r = data.concurso;
         setResultado(r);
         if (r) {
-          setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, r, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true)).sort((a, b) => b.percentual - a.percentual));
+          setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, r, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true, j.metadados)).sort((a, b) => b.percentual - a.percentual));
         }
       }
     } catch { /* ignora */ } finally {
@@ -243,18 +422,25 @@ export default function CompararPage() {
     const handleComparar = () => {
       if (!resultado) return;
       if (modoComparacao === "manual") {
+        const extrasMetadados: Record<string, unknown> = { ...extrasSel };
+        if (posicional) {
+          if (colunasSel.some((c) => c.length === 0)) return;
+          extrasMetadados.colunas = colunasSel;
+          setComparacoes([compararJogo(colunasSel.map((c) => c[0]), resultado, loteria, undefined, undefined, extrasMetadados)]);
+          return;
+        }
         if (dezenasSelecionadas.length === 0) return;
-        setComparacoes([compararJogo(dezenasSelecionadas.sort((a, b) => a - b), resultado, loteria)]);
+        setComparacoes([compararJogo([...dezenasSelecionadas].sort((a, b) => a - b), resultado, loteria, undefined, undefined, extrasMetadados)]);
       } else {
         if (jogoSelecionadoId && jogarSelecionado) {
           const jogoLoteria = LOTERIAS.find((x) => x.id === jogarSelecionado.loteria || x.slug === jogarSelecionado.loteria) || loteria;
-          setComparacoes([compararJogo(jogarSelecionado.dezenas, resultado, jogoLoteria, jogarSelecionado.nome || jogarSelecionado.id.slice(0, 8))]);
+          setComparacoes([compararJogo(jogarSelecionado.dezenas, resultado, jogoLoteria, jogarSelecionado.nome || jogarSelecionado.id.slice(0, 8), undefined, jogarSelecionado.metadados)]);
           return;
         }
         const lote = lotes.find((l) => l.id === loteSelecionadoId);
         if (!lote || lote.jogos.length === 0) return;
         const loteLoteria = LOTERIAS.find((x) => x.id === lote.loteria) || loteria;
-        const comps = lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true));
+        const comps = lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true, j.metadados));
         comps.sort((a, b) => b.percentual - a.percentual);
         setComparacoes(comps);
       }
@@ -283,6 +469,7 @@ export default function CompararPage() {
       dezenas: j.dezenas,
       score: j.score,
       nome: j.nome || null,
+      metadados: j.metadados ?? null,
       criado_em: lote.criado_em,
       criado_por: lote.criado_por || null,
       criador_avatar_url: lote.criador_avatar_url || null,
@@ -346,36 +533,58 @@ export default function CompararPage() {
                 <Label className="flex items-center justify-between">
                   <span>Seu Jogo</span>
                   <span className="text-xs text-muted-foreground font-normal">
-                    {dezenasSelecionadas.length} / {loteria.qtd_dezenas_padrao}
+                    {posicional
+                      ? `${colunasSel.reduce((s, c) => s + c.length, 0)} / ${loteria.qtd_dezenas_padrao}`
+                      : `${dezenasSelecionadas.length} / ${loteria.qtd_dezenas_padrao}`}
                   </span>
                 </Label>
-                {dezenasSelecionadas.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-muted/30">
-                    {dezenasSelecionadas.sort((a, b) => a - b).map(d => (
-                      <Badge key={d} variant="secondary" className="text-sm px-2.5 py-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive" onClick={() => toggleDezena(d)}>
-                        {String(d).padStart(2, "0")} <span className="ml-1 text-xs opacity-60">✕</span>
-                      </Badge>
-                    ))}
-                  </div>
+                {posicional && loteria.colunas ? (
+                  <VolantePosicional
+                    loteria={loteria}
+                    total={loteria.qtd_dezenas_padrao}
+                    colunas={colunasSel}
+                    onChange={setColunasSel}
+                  />
+                ) : (
+                  <>
+                    {dezenasSelecionadas.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 p-2 rounded-lg bg-muted/30">
+                        {[...dezenasSelecionadas].sort((a, b) => a - b).map(d => (
+                          <Badge key={d} variant="secondary" className="text-sm px-2.5 py-1 cursor-pointer hover:bg-destructive/10 hover:text-destructive" onClick={() => toggleDezena(d)}>
+                            {String(d).padStart(2, "0")} <span className="ml-1 text-xs opacity-60">✕</span>
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                    <div className="p-3 rounded-xl border border-muted bg-card/50">
+                      <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
+                        {Array.from({ length: loteria.universo_max - loteria.universo_min + 1 }, (_, i) => loteria.universo_min + i).map(numero => {
+                          const isSelected = dezenasSelecionadas.includes(numero);
+                          const atLimit = !isSelected && dezenasSelecionadas.length >= loteria.qtd_dezenas_padrao;
+                          return (
+                            <button key={numero} type="button" disabled={atLimit} onClick={() => toggleDezena(numero)}
+                              className={`aspect-square rounded-full text-sm font-bold tabular-nums transition-all duration-150 cursor-pointer flex items-center justify-center ${
+                                isSelected ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-110 ring-2 ring-primary/40"
+                                : atLimit ? "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
+                                : "bg-muted text-foreground hover:bg-primary/15 hover:text-primary hover:scale-110 hover:shadow-md border border-border/50"
+                              }`}>
+                              {String(numero).padStart(2, "0")}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
                 )}
-                <div className="p-3 rounded-xl border border-muted bg-card/50">
-                  <div className="grid grid-cols-5 sm:grid-cols-10 md:grid-cols-12 gap-1.5">
-                    {Array.from({ length: loteria.universo_max - loteria.universo_min + 1 }, (_, i) => loteria.universo_min + i).map(numero => {
-                      const isSelected = dezenasSelecionadas.includes(numero);
-                      const atLimit = !isSelected && dezenasSelecionadas.length >= loteria.qtd_dezenas_padrao;
-                      return (
-                        <button key={numero} type="button" disabled={atLimit} onClick={() => toggleDezena(numero)}
-                          className={`aspect-square rounded-full text-sm font-bold tabular-nums transition-all duration-150 cursor-pointer flex items-center justify-center ${
-                            isSelected ? "bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-110 ring-2 ring-primary/40"
-                            : atLimit ? "bg-muted/40 text-muted-foreground/30 cursor-not-allowed"
-                            : "bg-muted text-foreground hover:bg-primary/15 hover:text-primary hover:scale-110 hover:shadow-md border border-border/50"
-                          }`}>
-                          {String(numero).padStart(2, "0")}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                {!!loteria.componentes_extras?.length && (
+                  <ExtrasVolante
+                    componentes={loteria.componentes_extras}
+                    extras={extrasSel}
+                    onChange={(tipo, valores) =>
+                      setExtrasSel((prev) => ({ ...prev, [tipo]: valores }))
+                    }
+                  />
+                )}
               </div>
             )}
 
@@ -523,7 +732,7 @@ export default function CompararPage() {
         </Card>
       </div>
 
-      <Button onClick={handleComparar} className="mb-6" disabled={carregando || (modoComparacao === "manual" ? dezenasSelecionadas.length === 0 : !jogoSelecionadoId && !loteSelecionadoId)}>
+      <Button onClick={handleComparar} className="mb-6" disabled={carregando || (modoComparacao === "manual" ? (posicional ? colunasSel.some((c) => c.length === 0) : dezenasSelecionadas.length === 0) : !jogoSelecionadoId && !loteSelecionadoId)}>
         <GitCompare className="h-4 w-4 mr-2" /> Comparar
       </Button>
 
@@ -596,6 +805,65 @@ export default function CompararPage() {
                         ))}
                       </div>
                     </div>
+                  </div>
+                )}
+                {!!comp.extraInfo?.length && (
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-emerald-500 mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-medium">Extras:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {comp.extraInfo.map((info) => (
+                          <Badge key={info} variant="outline" className="text-emerald-600">{info}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {comp.acertos2 && (
+                  <div className="border-t pt-4 space-y-3">
+                    <span className="font-medium">2º Sorteio</span>
+                    <div className="flex items-start gap-2">
+                      <CheckCircle2 className="h-5 w-5 text-green-500 mt-0.5 shrink-0" />
+                      <div>
+                        <span className="font-medium">Acertos ({comp.acertos2.length}):</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {comp.acertos2.map((d) => (
+                            <Badge key={d} variant="default" className="bg-green-500 text-white">{String(d).padStart(2, "0")}</Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    {!!comp.erros2?.length && (
+                      <div className="flex items-start gap-2">
+                        <XCircle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+                        <div>
+                          <span className="font-medium">Erros ({comp.erros2.length}):</span>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {comp.erros2.map((d) => (
+                              <Badge key={d} variant="outline" className="text-red-500">{String(d).padStart(2, "0")}</Badge>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {!!comp.grades2?.length && (
+                      <div className="flex flex-wrap gap-1">
+                        {comp.grades2.map((grade) => (
+                          <Badge key={grade.nome} variant="secondary">{grade.nome} - {grade.descricao}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {comp.faixaPremio2 && (
+                      <div>
+                        <p className="text-sm text-muted-foreground">{comp.faixaPremio2}</p>
+                        {comp.valorPremio2 ? (
+                          <p className="text-sm font-semibold text-green-600">
+                            R$ {comp.valorPremio2.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} por ganhador
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 )}
                 {comp.grades.length > 0 && (

@@ -23,14 +23,18 @@ CREATE INDEX IF NOT EXISTS idx_notificacoes_data ON notificacoes(criado_em);
 ALTER TABLE notificacoes ENABLE ROW LEVEL SECURITY;
 
 -- Policies para notificações
+DROP POLICY IF EXISTS "Usuarios veem proprias notificacoes" ON notificacoes;
 CREATE POLICY "Usuarios veem proprias notificacoes" ON notificacoes
   FOR SELECT USING (usuario_id = auth.uid()::text);
 
+DROP POLICY IF EXISTS "Usuarios criam proprias notificacoes" ON notificacoes;
 CREATE POLICY "Usuarios criam proprias notificacoes" ON notificacoes
   FOR INSERT WITH CHECK (usuario_id = auth.uid()::text);
 
+DROP POLICY IF EXISTS "Usuarios atualizam proprias notificacoes" ON notificacoes;
 CREATE POLICY "Usuarios atualizam proprias notificacoes" ON notificacoes
   FOR UPDATE USING (usuario_id = auth.uid()::text);
 
+DROP POLICY IF EXISTS "Usuarios deletam proprias notificacoes" ON notificacoes;
 CREATE POLICY "Usuarios deletam proprias notificacoes" ON notificacoes
   FOR DELETE USING (usuario_id = auth.uid()::text);

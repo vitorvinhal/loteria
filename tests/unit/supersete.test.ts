@@ -68,4 +68,33 @@ describe('Super Sete — regra posicional', () => {
     expect(r2.acertos).toBe(5);
     expect(r2.acertosPosicionais).toEqual([false, true, true, true, true, true, false]);
   });
+
+  it('aposta múltipla: coluna acerta se qualquer dígito marcado coincidir', () => {
+    const jogo: JogoSorteado = {
+      dezenas: [1, 2, 3, 4, 5, 6, 7],
+      colunas: [[1], [2], [3], [4], [5], [6], [7, 8]],
+    };
+    // Sorteio marca 8 na 7ª coluna — aposta tem 7 e 8 → acerta.
+    const sorteio: JogoSorteado = { dezenas: [1, 2, 3, 4, 5, 6, 8] };
+    const r = regra.conferir(jogo, sorteio, loteria);
+    expect(r.acertos).toBe(7);
+    expect(r.acertosPosicionais).toEqual([true, true, true, true, true, true, true]);
+
+    // Sorteio marca 9 na 7ª coluna → aposta não tem 9 → 6 acertos.
+    const sorteio9: JogoSorteado = { dezenas: [1, 2, 3, 4, 5, 6, 9] };
+    expect(regra.conferir(jogo, sorteio9, loteria).acertos).toBe(6);
+  });
+
+  it('chave de aposta múltipla distingue dezenas diferentes na mesma coluna', () => {
+    const a: JogoSorteado = {
+      dezenas: [1, 2, 3, 4, 5, 6, 7],
+      colunas: [[1], [2], [3], [4], [5], [6], [7, 8]],
+    };
+    const b: JogoSorteado = {
+      dezenas: [1, 2, 3, 4, 5, 6, 7],
+      colunas: [[1], [2], [3], [4], [5], [6], [7, 9]],
+    };
+    expect(regra.chave(a)).not.toBe(regra.chave(b));
+    expect(regra.chave(a)).not.toBe(regra.chave({ dezenas: [1, 2, 3, 4, 5, 6, 7] }));
+  });
 });

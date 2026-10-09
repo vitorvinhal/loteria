@@ -113,7 +113,12 @@ export const regraPosicional: RegraLoteria = {
     const acertosPosicionais: boolean[] = [];
     let acertos = 0;
     for (let col = 0; col < jogo.dezenas.length; col++) {
-      const acertou = jogo.dezenas[col] === sorteio.dezenas[col];
+      // Na aposta múltipla, a coluna é acertada se QUALQUER dígito marcado
+      // nela coincidir com o dígito sorteado na mesma posição.
+      const marcados = jogo.colunas?.[col];
+      const acertou = marcados && marcados.length > 0
+        ? marcados.includes(sorteio.dezenas[col])
+        : jogo.dezenas[col] === sorteio.dezenas[col];
       acertosPosicionais.push(acertou);
       if (acertou) acertos++;
     }
@@ -137,6 +142,11 @@ export const regraPosicional: RegraLoteria = {
   },
 
   chave(jogo: JogoSorteado): string {
+    // Aposta múltipla: dois jogos podem ter o mesmo primeiro dígito em uma
+    // coluna mas dezenas diferentes — a chave precisa refletir as colunas.
+    if (jogo.colunas && jogo.colunas.some(c => c.length > 1)) {
+      return jogo.colunas.map(c => c.join('')).join('|');
+    }
     return jogo.dezenas.join(':');
   },
 };
