@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.perfil_foto (
   usuario_id TEXT PRIMARY KEY,
   avatar_base64 TEXT,
   camuflagem_ativa BOOLEAN DEFAULT FALSE,
+  atualizado_em TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE public.perfil_foto ENABLE ROW LEVEL SECURITY;

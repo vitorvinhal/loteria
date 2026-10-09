@@ -34,9 +34,10 @@ export default function EstatisticasPage() {
 
   useEffect(() => {
     carregarEstatisticas();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loteriaSlug]);
 
-  const carregarEstatisticas = async () => {
+  async function carregarEstatisticas() {
     setIsLoading(true);
     try {
       const response = await fetch(`/api/estatisticas/${loteriaSlug}`);
@@ -49,7 +50,7 @@ export default function EstatisticasPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }
 
   const numerosQuentes = analise?.numeros.filter(n => n.status === "quente").slice(0, 10) || [];
   const numerosFrios = analise?.numeros.filter(n => n.status === "frio").slice(0, 10) || [];

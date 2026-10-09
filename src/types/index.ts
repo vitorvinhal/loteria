@@ -1,3 +1,31 @@
+export type Mecanica = 'conjunto' | 'posicional';
+
+export interface ComponenteExtra {
+  tipo: 'time' | 'mes' | 'trevo';
+  nome: string;
+  universo_min: number;
+  universo_max: number;
+  qtd_min: number;
+  qtd_max: number;
+  obrigatorio: boolean;
+}
+
+export interface FaixaColuna {
+  total_min: number;
+  total_max: number;
+  min_coluna: number;
+  max_coluna: number;
+}
+
+export interface ConfigColunas {
+  total_colunas: number;
+  universo_min: number;
+  universo_max: number;
+  min_total: number;
+  max_total: number;
+  faixas_por_coluna: FaixaColuna[];
+}
+
 export interface Loteria {
   id: string;
   slug: string;
@@ -12,6 +40,10 @@ export interface Loteria {
   preco_aposta_base: number;
   regras_vitoria: RegraVitoria[];
   ativo: boolean;
+  mecanica?: Mecanica;
+  qtd_sorteada?: number;
+  componentes_extras?: ComponenteExtra[];
+  colunas?: ConfigColunas;
 }
 
 export interface RegraVitoria {

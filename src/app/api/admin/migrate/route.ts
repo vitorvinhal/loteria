@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSupabase } from "@/lib/db";
-import { getSession } from "@/lib/supabase/auth/server";
+import { getUser } from "@/lib/supabase/auth/server";
+import { isAdminUser } from "@/lib/admin";
 
 const MIGRATIONS = [
   {
@@ -60,10 +61,9 @@ const MIGRATIONS = [
 
 export async function POST() {
   try {
-    const session = await getSession();
-    if (!session?.user) {
-      return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
-    }
+    const user = await getUser();
+    if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
+    if (!isAdminUser(user)) return NextResponse.json({ error: "Acesso restrito" }, { status: 403 });
 
     const supabase = getSupabase();
     const results: { table: string; ok: boolean; error?: string }[] = [];

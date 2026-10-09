@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, PenTool, Target, RotateCcw, CheckCircle2, Calendar, Coins, Save, Loader2, BarChart3, Plus, Minus } from "lucide-react";
-import { LOTERIAS, getLoteriaPorSlug } from "@/lib/loterias";
-import { calcularScore } from "@/modules/scoring";
+import { LOTERIAS, getLoteriaPorSlug, getPreco, getOpcoesQtd } from "@/lib/loterias";
 import { ShareGame } from "@/components/lottery/share-game";
 
 interface Analise {
@@ -17,46 +16,6 @@ interface Analise {
   pares: number;
   impares: number;
   melhorEstrategia: string;
-}
-
-const ESTRATEGIAS = [
-  { nome: "Paridade Equilibrada", descricao: "Equilíbrio entre pares e ímpares" },
-  { nome: "Soma Ideal", descricao: "Soma dentro da faixa estatística" },
-  { nome: "Distribuição Uniforme", descricao: "Dezenas distribuídas no universo" },
-  { nome: "Sequências Evitadas", descricao: "Evita números consecutivos" },
-  { nome: "Zonas Cobertas", descricao: "Cobertura ampla do universo" },
-];
-
-// Tabela de preços por quantidade de dezenas (Lotofácil 2026)
-const PRECOS_POR_QTD: Record<string, Record<number, number>> = {
-  lotofacil: { 15: 3.00, 16: 48.00, 17: 408.00, 18: 2448.00, 19: 11628.00, 20: 46512.00 },
-  megasena: { 6: 5.00, 7: 35.00, 8: 140.00, 9: 420.00, 10: 1050.00, 11: 2310.00, 12: 4620.00 },
-  quina: { 5: 2.50, 6: 15.00, 7: 52.50, 8: 126.00, 9: 210.00, 10: 252.00 },
-  duplasena: { 6: 2.50, 7: 17.50, 8: 70.00, 9: 210.00, 10: 525.00 },
-  diadesorte: { 7: 3.50, 8: 14.00, 9: 42.00, 10: 105.00, 11: 231.00 },
-  maismilionaria: { 6: 6.00, 7: 42.00, 8: 168.00 },
-  lotomania: { 50: 3.50 },
-  timemania: { 10: 4.50 },
-  supersete: { 7: 2.50 },
-};
-
-function getPreco(slug: string, qtd: number): number {
-  const tabela = PRECOS_POR_QTD[slug];
-  if (tabela && tabela[qtd] !== undefined) return tabela[qtd];
-  const loteria = LOTERIAS.find(l => l.slug === slug);
-  return loteria?.preco_aposta_base || 0;
-}
-
-function getOpcoesQtd(slug: string): number[] {
-  const tabela = PRECOS_POR_QTD[slug];
-  if (tabela) return Object.keys(tabela).map(Number).sort((a, b) => a - b);
-  const loteria = LOTERIAS.find(l => l.slug === slug);
-  if (!loteria) return [];
-  const opcoes: number[] = [];
-  for (let i = loteria.qtd_dezenas_min; i <= loteria.qtd_dezenas_max; i++) {
-    opcoes.push(i);
-  }
-  return opcoes;
 }
 
 export default function CriarJogoPage() {
@@ -118,26 +77,6 @@ export default function CriarJogoPage() {
     setDezenas(selecionadas.sort((a, b) => a - b));
     setAnalise(null);
   };
-
-  const [estatisticasCarregadas, setEstatisticasCarregadas] = useState(false);
-
-  useEffect(() => {
-    fetch(`/api/estatisticas/${slug}`)
-      .then(res => res.json())
-      .then(data => {
-        setEstatisticasCarregadas(true);
-        if (data.numeros && data.totalConcursos > 0) {
-          const freqMap = new Map<number, number>();
-          const atrasoMap = new Map<number, number>();
-          data.numeros.forEach((n: any) => {
-            freqMap.set(n.numero, n.frequencia);
-            atrasoMap.set(n.numero, n.atraso);
-          });
-          ;(window as any).__LOTERIAS_ESTATISTICAS__ = { freqMap, atrasoMap, totalConcursos: data.totalConcursos, mediaSoma: data.mediaSoma, desvioSoma: data.desvioSoma, parImpar: data.parImpar };
-        }
-      })
-      .catch(() => setEstatisticasCarregadas(false));
-  }, [slug]);
 
   const handleAnalisar = async () => {
     if (dezenas.length < 2) return;

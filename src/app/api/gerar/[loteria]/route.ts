@@ -5,6 +5,7 @@ import { calcularScore } from "@/modules/scoring";
 import { getSupabase } from "@/lib/db";
 import { getUser, getSupabaseWithAuth } from "@/lib/supabase/auth/server";
 import { buscarResultado, buscarHistoricoCompleto } from "@/modules/sync";
+import { obterRegra, gerarExtras, type JogoSorteado } from "@/modules/lottery";
 import { Estatisticas, Loteria } from "@/types";
 
 interface GerarRequest {
@@ -122,23 +123,84 @@ async function buscarEstatisticasReais(loteria: Loteria): Promise<Estatisticas> 
   return stats;
 }
 
-function gerarAleatorio(loteria: Loteria, quantidade: number): number[] {
-  const universo: number[] = [];
-  for (let i = loteria.universo_min; i <= loteria.universo_max; i++) {
-    universo.push(i);
-  }
-  const copia = [...universo];
-  const selecionados: number[] = [];
-  for (let i = 0; i < quantidade && copia.length > 0; i++) {
-    const idx = Math.floor(Math.random() * copia.length);
-    selecionados.push(copia.splice(idx, 1)[0]);
-  }
-  return selecionados.sort((a, b) => a - b);
-}
-
 function temDezenasValidas(dezenas: number[], loteria: Loteria, qtdEsperada: number): boolean {
   if (!dezenas || dezenas.length !== qtdEsperada) return false;
   return dezenas.every(d => d >= loteria.universo_min && d <= loteria.universo_max);
+}
+
+// Gera um jogo "premiado" posicional (Super Sete): cada coluna recebe o dígito
+// sorteado até `acertosAlvo`, e um dígito aleatório nas demais colunas.
+function gerarJogoFakePremiadoPosicional(
+  dezenasSorteadas: number[],
+  loteria: Loteria,
+  acertosAlvo: number,
+  rng: () => number = Math.random
+): number[] {
+  const cfg = loteria.colunas;
+  if (!cfg) return dezenasSorteadas;
+  const totalColunas = cfg.total_colunas;
+  const alvo = Math.max(0, Math.min(acertosAlvo, totalColunas));
+  const jogo: number[] = [];
+  for (let col = 0; col < totalColunas; col++) {
+    if (col < alvo && dezenasSorteadas[col] !== undefined) {
+      jogo.push(dezenasSorteadas[col]);
+    } else {
+      jogo.push(Math.floor(rng() * (cfg.universo_max - cfg.universo_min + 1)) + cfg.universo_min);
+    }
+  }
+  return jogo;
+}
+
+async function buscarUltimoConcurso(loteria: Loteria): Promise<number[] | null> {
+  // 1) Tenta o banco (se já sincronizado)
+  try {
+    const { data } = await getSupabase()
+      .from('concursos')
+      .select('dezenas_sorteadas')
+      .eq('loteria_id', loteria.id)
+      .order('numero_concurso', { ascending: false })
+      .limit(1)
+      .single();
+    const dezenas: number[] = Array.isArray(data?.dezenas_sorteadas) ? data.dezenas_sorteadas : [];
+    if (dezenas.length > 0) return dezenas;
+  } catch { /* continua para a API externa */ }
+
+  // 2) Fallback: busca o último concurso direto da API oficial
+  try {
+    const { concurso } = await buscarResultado(loteria);
+    const dezenas: number[] = Array.isArray(concurso?.dezenas_sorteadas) ? concurso.dezenas_sorteadas : [];
+    return dezenas.length > 0 ? dezenas : null;
+  } catch {
+    return null;
+  }
+}
+
+// Gera um jogo "premiado" a partir das dezenas sorteadas do último concurso.
+// `acertosAlvo` define quantas dezenas do sorteio o jogo vai conter (ex.: 6 ou 7).
+function gerarJogoFakePremiado(
+  dezenasSorteadas: number[],
+  loteria: Loteria,
+  qtdDezenas: number,
+  acertosAlvo: number
+): number[] {
+  const sorteadas = [...dezenasSorteadas];
+  const qtdOriginal = Math.min(sorteadas.length, qtdDezenas);
+
+  // Garante que o jogo tenha exatamente `acertosAlvo` dezenas do sorteio
+  const acertos = Math.max(1, Math.min(acertosAlvo, qtdOriginal));
+  const jogo = new Set(sorteadas.slice(0, acertos));
+
+  // Completa com dezenas aleatórias FORA do sorteio (para não exceder o alvo)
+  const universo: number[] = [];
+  for (let i = loteria.universo_min; i <= loteria.universo_max; i++) universo.push(i);
+  const foraDoSorteio = universo.filter(d => !sorteadas.includes(d));
+  while (jogo.size < qtdDezenas && foraDoSorteio.length > 0) {
+    const idx = Math.floor(Math.random() * foraDoSorteio.length);
+    const d = foraDoSorteio.splice(idx, 1)[0];
+    jogo.add(d);
+  }
+
+  return Array.from(jogo).sort((a, b) => a - b);
 }
 
 export async function POST(
@@ -171,12 +233,17 @@ export async function POST(
 
     let camuflagemAtiva = false;
     if (usuarioId) {
-      const { data: perfil } = await getSupabase()
-        .from('perfil_foto')
-        .select('camuflagem_ativa')
-        .eq('usuario_id', usuarioId)
-        .single();
-      camuflagemAtiva = perfil?.camuflagem_ativa ?? false;
+      try {
+        const profileClient = user ? await getSupabaseWithAuth() : getSupabase();
+        const { data: perfil } = await profileClient
+          .from('perfil_foto')
+          .select('camuflagem_ativa')
+          .eq('usuario_id', usuarioId)
+          .single();
+        camuflagemAtiva = perfil?.camuflagem_ativa ?? false;
+      } catch (e) {
+        console.error("[GERAÇÃO] Erro ao ler camuflagem_ativa:", e);
+      }
     }
 
     const slugEstrategia = estrategias[0];
@@ -184,10 +251,15 @@ export async function POST(
 
     const estatisticas = await buscarEstatisticasReais(loteria);
 
+    const regra = obterRegra(loteria);
+    const ehPosicional = regra.mecanica === 'posicional';
+
     const jogos: Array<{
       dezenas: number[];
       score: number;
       breakdown: Record<string, unknown>;
+      extras?: Record<string, number[]>;
+      colunas?: number[][];
     }> = [];
 
     const tentativasMaximas = Math.max(200000, quantidade * 4000);
@@ -197,65 +269,89 @@ export async function POST(
     let maiorScoreEncontrado = 0;
     const vistos = new Set<string>();
 
-    const avaliarCandidato = (dezenas: number[], indicadores: Record<string, number>): { dezenas: number[]; score: number; breakdown: Record<string, unknown> } | null => {
-      const sc = calcularScore(dezenas, loteria, estatisticas, indicadores);
+    const avaliarCandidato = (
+      jogo: JogoSorteado,
+      indicadores: Record<string, number>
+    ): { dezenas: number[]; score: number; breakdown: Record<string, unknown>; extras?: Record<string, number[]>; colunas?: number[][] } | null => {
+      const validacao = regra.validar(jogo, loteria);
+      if (!validacao.valido) return null;
+      const sc = calcularScore(jogo.dezenas, loteria, estatisticas, indicadores);
       if (sc.total > maiorScoreEncontrado) maiorScoreEncontrado = sc.total;
       return {
-        dezenas,
+        dezenas: jogo.dezenas,
         score: sc.total,
         breakdown: sc as unknown as Record<string, unknown>,
+        extras: jogo.extras,
+        colunas: jogo.colunas,
       };
     };
 
+    const qtdMeta = camuflagemAtiva && (slug === 'supersete' || slug === 'lotofacil') && quantidade >= 30
+      ? Math.max(1, quantidade - 3)
+      : quantidade;
+
     // Gera candidatos e aceita APENAS os que atingem o score mínimo.
     // Rejeita jogos abaixo da meta — só retorna jogos válidos.
-    while (tentativas < tentativasMaximas && Date.now() - inicio < timeoutMs && jogos.length < quantidade) {
+    while (tentativas < tentativasMaximas && Date.now() - inicio < timeoutMs && jogos.length < qtdMeta) {
       tentativas++;
 
       // Gera até 60 candidatos por tentativa
-      const candidatos: Array<{ dezenas: number[]; indicadores: Record<string, number> }> = [];
+      const candidatos: JogoSorteado[] = [];
 
-      if (estrategiaConfig) {
+      // Estratégias estatísticas só se aplicam a loterias de conjunto.
+      if (!ehPosicional && estrategiaConfig) {
         try {
           const { funcoesEstrategias } = await import("@/modules/strategies/implementations");
           const funcao = funcoesEstrategias[slugEstrategia];
           for (let i = 0; i < 10 && funcao; i++) {
             const resultado = funcao(loteria, estatisticas, estrategiaConfig.parametros_padrao);
             if (temDezenasValidas(resultado.dezenas, loteria, qtdDezenas)) {
-              candidatos.push({ dezenas: resultado.dezenas, indicadores: resultado.indicadores || {} });
+              candidatos.push({ dezenas: resultado.dezenas, extras: gerarExtras(loteria) });
             }
           }
         } catch { /* ignora */ }
       }
 
       for (let i = candidatos.length; i < 60; i++) {
-        candidatos.push({ dezenas: gerarAleatorio(loteria, qtdDezenas), indicadores: { aleatoriamente: 0.5 } });
+        candidatos.push(regra.gerarAleatorio({ loteria, estatisticas, qtdDezenas }));
       }
 
       for (const c of candidatos) {
-        const av = avaliarCandidato(c.dezenas, c.indicadores);
+        const av = avaliarCandidato(c, { aleatoriamente: 0.5 });
         if (av && av.score >= score_minimo) {
-          const chave = av.dezenas.join("-");
+          const chave = regra.chave(c);
           if (!vistos.has(chave)) {
             vistos.add(chave);
             jogos.push(av);
-            if (jogos.length >= quantidade) break;
+            if (jogos.length >= qtdMeta) break;
           }
         }
       }
     }
 
-    // Aplicar camuflagem (ilusão) se ativado
+    // Aplicar camuflagem (ilusão) se ativado — insere jogos "premiados" reais
     if (camuflagemAtiva && quantidade >= 30 && (slug === 'supersete' || slug === 'lotofacil')) {
       const maxFakes = 3;
       const fakesNeeded = Math.min(maxFakes, quantidade - jogos.length);
+      const dezenasSorteadas = await buscarUltimoConcurso(loteria);
       for (let i = 0; i < fakesNeeded; i++) {
-        // Cria um jogo fictício com score máximo (ex.: 100) e dezenas aleatórias
-        const fakeDezenas = gerarAleatorio(loteria, qtdDezenas);
+        // Variar a pontuação para não parecer artificial:
+        // primeiro fake com o MÁXIMO de acertos (15 na Lotofácil, 7 na Super Sete),
+        // os demais com um a menos (14/6), que é a faixa realmente paga.
+        const total = dezenasSorteadas?.length ?? 0;
+        const alvo = i === 0 ? total : Math.max(2, total - 1);
+        let fakeDezenas: number[];
+        if (ehPosicional && dezenasSorteadas) {
+          fakeDezenas = gerarJogoFakePremiadoPosicional(dezenasSorteadas, loteria, alvo);
+        } else if (dezenasSorteadas) {
+          fakeDezenas = gerarJogoFakePremiado(dezenasSorteadas, loteria, qtdDezenas, alvo);
+        } else {
+          fakeDezenas = regra.gerarAleatorio({ loteria, estatisticas, qtdDezenas }).dezenas;
+        }
         jogos.push({
           dezenas: fakeDezenas,
           score: 100,
-          breakdown: {},
+          breakdown: { camuflagem: true },
         });
       }
     }
@@ -263,7 +359,21 @@ export async function POST(
     jogos.sort((a, b) => b.score - a.score);
 
     const tempoExecucao = Date.now() - inicio;
-    const criadorAvatar = user?.user_metadata?.avatar_url || null;
+
+    let criadorAvatar = user?.user_metadata?.avatar_url || null;
+    if (usuarioId) {
+      try {
+        const profileClient = user ? await getSupabaseWithAuth() : getSupabase();
+        const { data: fotoRow } = await profileClient
+          .from('perfil_foto')
+          .select('avatar_base64')
+          .eq('usuario_id', usuarioId)
+          .single();
+        if (fotoRow?.avatar_base64) criadorAvatar = fotoRow.avatar_base64;
+      } catch (e) {
+        console.error("[GERAÇÃO] Erro ao ler avatar:", e);
+      }
+    }
 
     let loteId: string | null = null;
     try {
@@ -300,6 +410,7 @@ export async function POST(
             estrategia_id: estrategiaConfig?.id || null,
             score: j.score,
             score_breakdown: j.breakdown,
+            metadados: { ...(j.extras ?? {}), ...(j.colunas ? { colunas: j.colunas } : {}) },
             origem: 'algoritmo' as const,
           }));
 

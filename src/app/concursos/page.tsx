@@ -75,7 +75,7 @@ export default function ConcursosPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  const handleSyncBatch = async (alvo: number | string = 100) => {
+  async function handleSyncBatch(alvo: number | string = 100) {
     if (!loteria) return;
     setSyncing(true);
     setSyncProgress({ atual: 0, total: 0, salvos: 0, erros: 0 });
@@ -101,7 +101,7 @@ export default function ConcursosPage() {
         return;
       }
 
-      let ultimoConcurso = concursos.length > 0 ? concursos[0].numero_concurso : 0;
+      const ultimoConcurso = concursos.length > 0 ? concursos[0].numero_concurso : 0;
       let qtdAlvo: number;
 
       if (alvo === "completarer") {
@@ -139,7 +139,7 @@ export default function ConcursosPage() {
     } finally {
       setSyncing(false);
     }
-  };
+  }
 
   const totalPages = Math.ceil(total / limit);
 

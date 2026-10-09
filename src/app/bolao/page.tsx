@@ -8,42 +8,11 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Calculator, TrendingUp, Plus, Minus, X, Dices, Coins, RotateCcw } from "lucide-react";
-import { LOTERIAS } from "@/lib/loterias";
+import { LOTERIAS, getPreco, getOpcoesQtd } from "@/lib/loterias";
 
 interface Jogo {
   dezenas: number[];
   score: number;
-}
-
-const PRECOS_POR_QTD: Record<string, Record<number, number>> = {
-  lotofacil: { 15: 3.00, 16: 48.00, 17: 408.00, 18: 2448.00, 19: 11628.00, 20: 46512.00 },
-  megasena: { 6: 5.00, 7: 35.00, 8: 140.00, 9: 420.00, 10: 1050.00, 11: 2310.00, 12: 4620.00 },
-  quina: { 5: 2.50, 6: 15.00, 7: 52.50, 8: 126.00, 9: 210.00, 10: 252.00 },
-  duplasena: { 6: 2.50, 7: 17.50, 8: 70.00, 9: 210.00, 10: 525.00 },
-  diadesorte: { 7: 3.50, 8: 14.00, 9: 42.00, 10: 105.00, 11: 231.00 },
-  maismilionaria: { 6: 6.00, 7: 42.00, 8: 168.00 },
-  lotomania: { 50: 3.50 },
-  timemania: { 10: 4.50 },
-  supersete: { 7: 2.50 },
-};
-
-function getPreco(slug: string, qtd: number): number {
-  const tabela = PRECOS_POR_QTD[slug];
-  if (tabela && tabela[qtd] !== undefined) return tabela[qtd];
-  const loteria = LOTERIAS.find(l => l.slug === slug);
-  return loteria?.preco_aposta_base || 0;
-}
-
-function getOpcoesQtd(slug: string): number[] {
-  const tabela = PRECOS_POR_QTD[slug];
-  if (tabela) return Object.keys(tabela).map(Number).sort((a, b) => a - b);
-  const loteria = LOTERIAS.find(l => l.slug === slug);
-  if (!loteria) return [];
-  const opcoes: number[] = [];
-  for (let i = loteria.qtd_dezenas_min; i <= loteria.qtd_dezenas_max; i++) {
-    opcoes.push(i);
-  }
-  return opcoes;
 }
 
 export default function BolaoPage() {

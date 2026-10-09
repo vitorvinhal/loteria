@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Loterias CAIXA — Gerador, Análise e Conferência de Jogos
 
-## Getting Started
+Aplicação web para **gerar, analisar e conferir jogos das Loterias CAIXA**,
+com as regras oficiais de cada modalidade.
 
-First, run the development server:
+## Modalidades
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+| Modalidade | Mecânica | Extras |
+|---|---|---|
+| Lotofácil, Mega-Sena, Quina, Lotomania, Dupla Sena | conjunto (não ordenado) | — |
+| Timemania | conjunto | Time do Coração |
+| Dia de Sorte | conjunto | Mês da Sorte |
+| +Milionária | conjunto | Trevos (2–6) |
+| Super Sete | **posicional** (7 colunas 0–9) | — |
+
+Regras, preços e faixas seguem `src/lib/loterias.ts` e `docs/SPEC-regras-loterias.md`
+(fonte: loterias.caixa.gov.br).
+
+## Stack
+
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 ·
+Supabase (Auth + Postgres + Storage) · Recharts · Vitest · Vercel.
+
+## Estrutura
+
+```
+src/modules/lottery/   motor de regras (gerar/validar/conferir/custo)
+src/modules/scoring/   score estatístico dos jogos
+src/modules/analytics/ estatísticas a partir de concursos
+src/modules/strategies estratégias de geração
+src/modules/sync/      sincronização de resultados (CAIXA + 2 fallbacks)
+database/              schema.sql + migrações incrementais
+docs/                  ADR · SPEC · PLAN
+tests/unit/            vitest (45 testes)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Desenvolvimento
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm install
+cp .env.example .env.local   # preencha as chaves Supabase
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Verificação
 
-## Learn More
+```bash
+npm run lint
+npm run typecheck
+npm run build
+npm run test:run
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Governança
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`AGENTS.md` (execução operacional dos agentes) e `CLAUDE.md` (contexto mestre).

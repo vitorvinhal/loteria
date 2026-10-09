@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 import { GitCompare, CheckCircle2, XCircle, Trophy, BarChart3, Loader2, User } from "lucide-react";
 import { LOTERIAS } from "@/lib/loterias";
 import type { Loteria, Concurso } from "@/types";
@@ -27,6 +28,9 @@ interface ComparacaoResultado {
   estatisticas: { soma: number; pares: number; impares: number; sequencias: number; maiorSequencia: number };
   premioEstimado: string;
   valorPremio: number;
+  ganhadores: number;
+  faixaPremio: string;
+  camuflagem?: boolean;
 }
 
 interface LoteFromAPI {
@@ -36,7 +40,7 @@ interface LoteFromAPI {
   criado_em: string;
   criado_por: string | null;
   criador_avatar_url: string | null;
-  jogos: { id: string; dezenas: number[]; score: number | null; nome?: string | null }[];
+  jogos: { id: string; dezenas: number[]; score: number | null; nome?: string | null; score_breakdown?: { camuflagem?: boolean } | null }[];
 }
 
 function calcularEstatisticas(dezenas: number[]) {
@@ -84,6 +88,13 @@ function calcularGrades(acertos: number, loteria: Loteria): GradeAcerto[] {
       { nome: "15 acertos", qtd: 15, descricao: "15 acertos" },
       { nome: "0 acertos", qtd: 0, descricao: "0 acertos - Prêmio especial" },
     ],
+    supersete: [
+      { nome: "7 colunas", qtd: 7, descricao: "7 colunas certas - Prêmio máximo" },
+      { nome: "6 colunas", qtd: 6, descricao: "6 colunas certas" },
+      { nome: "5 colunas", qtd: 5, descricao: "5 colunas certas" },
+      { nome: "4 colunas", qtd: 4, descricao: "4 colunas certas" },
+      { nome: "3 colunas", qtd: 3, descricao: "3 colunas certas - Prêmio fixo" },
+    ],
   };
   const grades = nomesGrades[loteria.id] || [];
   return grades.filter((g) => acertos >= g.qtd && g.qtd > 0).slice(0, 1);
@@ -94,15 +105,37 @@ function estimarPremio(acertos: number, loteria: Loteria): { texto: string; valo
   return { texto: regra ? regra.descricao : "Sem premiação", valor: 0 };
 }
 
-function compararJogo(dezenas: number[], resultado: Concurso, loteria: Loteria, nome?: string): ComparacaoResultado {
+function compararJogo(dezenas: number[], resultado: Concurso, loteria: Loteria, nome?: string, camuflagem?: boolean): ComparacaoResultado {
   const resultadoSet = new Set(resultado.dezenas_sorteadas);
-  const acertos = dezenas.filter((d) => resultadoSet.has(d)).sort((a, b) => a - b);
-  const erros = dezenas.filter((d) => !resultadoSet.has(d)).sort((a, b) => a - b);
+  const posicional = loteria.mecanica === 'posicional';
+  const acertos = posicional
+    ? dezenas.filter((d, i) => d === resultado.dezenas_sorteadas[i])
+    : dezenas.filter((d) => resultadoSet.has(d)).sort((a, b) => a - b);
+  const erros = posicional
+    ? dezenas.filter((d, i) => d !== resultado.dezenas_sorteadas[i])
+    : dezenas.filter((d) => !resultadoSet.has(d)).sort((a, b) => a - b);
   const percentual = dezenas.length > 0 ? Math.round((acertos.length / dezenas.length) * 100) : 0;
   const grades = calcularGrades(acertos.length, loteria);
   const estatisticas = calcularEstatisticas(dezenas);
   const premio = estimarPremio(acertos.length, loteria);
-  return { nome, dezenas, acertos, erros, percentual, grades, estatisticas, premioEstimado: premio.texto, valorPremio: premio.valor };
+
+  let valorPremio = 0;
+  let ganhadores = 0;
+  let faixaPremio = premio.texto;
+  const premiacoes = (resultado as unknown as { premiacoes?: Array<{ descricao: string; acertos: number; ganhadores: number; premio: number }> }).premiacoes;
+  if (Array.isArray(premiacoes) && premiacoes.length > 0) {
+    const faixasOrdenadas = [...premiacoes].sort((a, b) => b.acertos - a.acertos);
+    for (const p of faixasOrdenadas) {
+      if (acertos.length >= p.acertos && p.acertos > 0 && p.premio > 0) {
+        valorPremio = p.premio;
+        ganhadores = p.ganhadores;
+        faixaPremio = p.descricao || premio.texto;
+        break;
+      }
+    }
+  }
+
+  return { nome, dezenas, acertos, erros, percentual, grades, estatisticas, premioEstimado: faixaPremio, valorPremio, ganhadores, faixaPremio, camuflagem };
 }
 
 type ModoComparacao = "manual" | "lote";
@@ -124,7 +157,14 @@ export default function CompararPage() {
   const [filtroPeriodo, setFiltroPeriodo] = useState<"todos" | "7" | "30">("todos");
   const [filtroLoteria, setFiltroLoteria] = useState<string>('');
   const [filtroNome, setFiltroNome] = useState<string>('');
+  const [loteExpandidoId, setLoteExpandidoId] = useState<string | null>(null);
+  const [loteResultadoExpandido, setLoteResultadoExpandido] = useState(true);
   const loteria = LOTERIAS.find((l) => l.slug === loteriaSlug) || LOTERIAS[0];
+  const [agora, setAgora] = useState(0);
+
+  useEffect(() => {
+    setAgora(Date.now());
+  }, []);
 
   const carregarLotes = useCallback(async () => {
     setCarregandoLotes(true);
@@ -168,7 +208,7 @@ export default function CompararPage() {
     const loteLoteria = LOTERIAS.find((x) => x.id === lote.loteria) || loteria;
     setLoteriaSlug(loteLoteria.slug);
     setModoComparacao("lote");
-    setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8))));
+    setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true)).sort((a, b) => b.percentual - a.percentual));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loteDaUrl, resultado, carregandoLotes, lotes]);
 
@@ -188,7 +228,7 @@ export default function CompararPage() {
         const r = data.concurso;
         setResultado(r);
         if (r) {
-          setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, r, loteLoteria, j.nome || j.id.slice(0, 8))));
+          setComparacoes(lote.jogos.map((j) => compararJogo(j.dezenas, r, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true)).sort((a, b) => b.percentual - a.percentual));
         }
       }
     } catch { /* ignora */ } finally {
@@ -214,7 +254,7 @@ export default function CompararPage() {
         const lote = lotes.find((l) => l.id === loteSelecionadoId);
         if (!lote || lote.jogos.length === 0) return;
         const loteLoteria = LOTERIAS.find((x) => x.id === lote.loteria) || loteria;
-        const comps = lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8)));
+        const comps = lote.jogos.map((j) => compararJogo(j.dezenas, resultado, loteLoteria, j.nome || j.id.slice(0, 8), j.score_breakdown?.camuflagem === true));
         comps.sort((a, b) => b.percentual - a.percentual);
         setComparacoes(comps);
       }
@@ -225,13 +265,15 @@ export default function CompararPage() {
     ? comparacoes.reduce((best, curr) => (curr.percentual > best.percentual ? curr : best), comparacoes[0])
     : null;
 
-  const lotesDaLoteria = lotes.filter((l) =>
-    (() => {
-      if (filtroPeriodo === "todos") return true;
+  const lotesDaLoteria = lotes.filter((l) => {
+    if (filtroPeriodo !== "todos") {
       const dias = parseInt(filtroPeriodo, 10);
-      return new Date(l.criado_em).getTime() >= Date.now() - dias * 86400000;
-    })()
-  );
+      if (new Date(l.criado_em).getTime() < agora - dias * 86400000) return false;
+    }
+    if (filtroLoteria && l.loteria !== filtroLoteria) return false;
+    if (filtroNome && !(l.nome || "").toLowerCase().includes(filtroNome.toLowerCase()) && !(l.criado_por || "").toLowerCase().includes(filtroNome.toLowerCase())) return false;
+    return true;
+  });
 
   const jogosDaLoteria = lotesDaLoteria.flatMap((lote) =>
     lote.jogos.map((j) => ({
@@ -357,73 +399,99 @@ export default function CompararPage() {
                     </button>
                   ))}
                 </div>
+                <Input
+                  placeholder="Buscar por nome ou autor..."
+                  value={filtroNome}
+                  onChange={(e) => setFiltroNome(e.target.value)}
+                  className="h-8 text-xs"
+                />
                 {carregandoLotes ? (
                   <p className="text-sm text-muted-foreground">Carregando...</p>
-                ) : jogosDaLoteria.length > 0 ? (
-                  <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                ) : lotesDaLoteria.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhum jogo salvo para esta loteria.</p>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
                     {lotesDaLoteria
                       .sort((a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime())
-                      .map((lote) => (
-                        <div key={lote.id} className="border rounded-lg overflow-hidden">
-                          <div className="flex items-center gap-2 p-2 bg-muted/30 border-b">
-                            {lote.criador_avatar_url ? (
-                              <img
-                                src={lote.criador_avatar_url}
-                                alt="Foto"
-                                className="h-7 w-7 rounded-full object-cover border border-border shrink-0"
-                              />
-                            ) : (
-                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
-                                <User className="h-3.5 w-3.5" />
-                              </span>
-                            )}
-                            <div className="min-w-0 flex-1">
-                              <p className="text-xs font-semibold truncate">{lote.criado_por || "Anônimo"}</p>
-                              <p className="text-[10px] text-muted-foreground capitalize">{formatarData(lote.criado_em)} · {lote.jogos.length} jogo(s)</p>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => compararLoteInteiro(lote.id)}
-                              className="shrink-0"
+                      .map((lote) => {
+                        const expandido = loteExpandidoId === lote.id;
+                        return (
+                          <div key={lote.id} className="border rounded-lg overflow-hidden">
+                            <div
+                              className="flex items-center gap-2 p-2 bg-muted/30 border-b cursor-pointer hover:bg-accent/40 transition-colors"
+                              onClick={() => setLoteExpandidoId(expandido ? null : lote.id)}
                             >
-                              <GitCompare className="h-3.5 w-3.5 mr-1" />
-                              Comparar lote
-                            </Button>
-                          </div>
-                          <div className="divide-y">
-                            {lote.jogos.map((j) => (
-                              <button
-                                key={j.id}
-                                type="button"
-                                onClick={() => setJogoSelecionadoId(j.id)}
-                                className={`w-full text-left px-3 py-2 transition-colors cursor-pointer ${
-                                  jogoSelecionadoId === j.id ? "bg-primary/10" : "hover:bg-accent/50"
-                                }`}
+                              {lote.criador_avatar_url ? (
+                                <img
+                                  src={lote.criador_avatar_url}
+                                  alt="Foto"
+                                  className="h-7 w-7 rounded-full object-cover border border-border shrink-0"
+                                />
+                              ) : (
+                                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-primary shrink-0">
+                                  <User className="h-3.5 w-3.5" />
+                                </span>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-semibold truncate">{lote.criado_por || "Anônimo"}</p>
+                                <p className="text-[10px] text-muted-foreground capitalize">
+                                  {formatarData(lote.criado_em)} · {lote.jogos.length} jogo(s)
+                                </p>
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="shrink-0"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  compararLoteInteiro(lote.id);
+                                }}
                               >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className={`text-sm font-medium truncate ${jogoSelecionadoId === j.id ? "text-primary" : ""}`}>
-                                    {j.nome || `Jogo ${j.id.slice(0, 8)}`}
-                                  </span>
-                                  {j.score !== null && (
-                                    <Badge variant={j.score >= 80 ? "default" : "secondary"} className="text-xs shrink-0">
-                                      {j.score}
-                                    </Badge>
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {j.dezenas.slice(0, 8).map(d => (
-                                    <span key={d} className="text-[10px] font-mono bg-muted rounded px-1">{String(d).padStart(2, "0")}</span>
-                                  ))}
-                                </div>
-                              </button>
-                            ))}
+                                <GitCompare className="h-3.5 w-3.5 mr-1" />
+                                Comparar lote
+                              </Button>
+                              <span className="text-xs text-muted-foreground shrink-0">
+                                {expandido ? "▲" : "▼"}
+                              </span>
+                            </div>
+                            {expandido && (
+                              <div className="divide-y">
+                                {lote.jogos.map((j) => (
+                                  <button
+                                    key={j.id}
+                                    type="button"
+                                    onClick={() => setJogoSelecionadoId(j.id)}
+                                    className={`w-full text-left px-3 py-2 transition-colors cursor-pointer ${
+                                      jogoSelecionadoId === j.id ? "bg-primary/10" : "hover:bg-accent/50"
+                                    }`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className={`text-sm font-medium truncate ${jogoSelecionadoId === j.id ? "text-primary" : ""}`}>
+                                        {j.score_breakdown?.camuflagem && <span title="Jogo camuflado" className="text-amber-500 mr-1">✦</span>}
+                                        {j.nome || `Jogo ${j.id.slice(0, 8)}`}
+                                      </span>
+                                      {j.score !== null && (
+                                        <Badge variant={j.score >= 80 ? "default" : "secondary"} className="text-xs shrink-0">
+                                          {j.score}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 mt-1">
+                                      {j.dezenas.slice(0, 8).map(d => (
+                                        <span key={d} className="text-[10px] font-mono bg-muted rounded px-1">{String(d).padStart(2, "0")}</span>
+                                      ))}
+                                      {j.dezenas.length > 8 && (
+                                        <span className="text-[10px] text-muted-foreground">+{j.dezenas.length - 8}</span>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                   </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Nenhum jogo salvo para esta loteria.</p>
                 )}
               </div>
             )}
@@ -460,7 +528,22 @@ export default function CompararPage() {
       </Button>
 
       {comparacoes.length > 0 && (
-        <div className="space-y-6">
+        <Card>
+          <CardHeader
+            className="cursor-pointer hover:bg-accent/40 transition-colors"
+            onClick={() => setLoteResultadoExpandido(!loteResultadoExpandido)}
+          >
+            <CardTitle className="flex items-center justify-between flex-wrap gap-2">
+              <span className="flex items-center gap-2">
+                <GitCompare className="h-5 w-5 text-primary" />
+                Resultado do Lote
+                <Badge variant="outline">{comparacoes.length} jogo(s)</Badge>
+              </span>
+              <span className="text-xs text-muted-foreground">{loteResultadoExpandido ? "▲ Retrair lote" : "▼ Expandir lote"}</span>
+            </CardTitle>
+          </CardHeader>
+          {loteResultadoExpandido && (
+          <CardContent className="space-y-6">
           {melhorComparacao && comparacoes.length > 1 && (
             <Card className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
               <CardContent className="p-4">
@@ -479,7 +562,11 @@ export default function CompararPage() {
             <Card key={idx}>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between flex-wrap gap-2">
-                  <span>{comp.nome && <span className="text-muted-foreground text-sm mr-2">#{comp.nome}</span>}Resultado</span>
+                  <span>
+                    {comp.nome && <span className="text-muted-foreground text-sm mr-2">#{comp.nome}</span>}
+                    {comp.camuflagem && <span title="Jogo camuflado" className="text-amber-500 mr-1">✦</span>}
+                    Resultado
+                  </span>
                   <div className="flex gap-2">
                     <Badge variant={comp.percentual >= 50 ? "default" : "secondary"} className="text-lg px-3">{comp.percentual}%</Badge>
                     {comp.acertos.length > 0 && <Badge variant="outline" className="text-lg px-3">{comp.acertos.length} acertos</Badge>}
@@ -522,36 +609,115 @@ export default function CompararPage() {
                 <div className="border-t pt-4">
                   <div className="flex items-center gap-2 mb-2"><Trophy className="h-5 w-5 text-amber-500" /><span className="font-medium">Premiação:</span></div>
                   <p className="text-sm text-muted-foreground">{comp.premioEstimado}</p>
+                  {comp.valorPremio > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      <p className="text-sm font-semibold text-green-600">
+                        R$ {comp.valorPremio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} por ganhador
+                      </p>
+                      {comp.ganhadores > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          {comp.ganhadores.toLocaleString("pt-BR")} ganhador(es) oficial(is)
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </CardContent>
             </Card>
           ))}
 
-          {comparacoes.length > 0 && (
-            <Card>
-              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-5 w-5" />Resumo</CardTitle></CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                  {(() => {
-                    const avg = (fn: (c: ComparacaoResultado) => number) => Math.round(comparacoes.reduce((a, c) => a + fn(c), 0) / comparacoes.length);
-                    return [
-                      { label: "Média Acertos", value: avg((c) => c.acertos.length), color: "text-green-600" },
-                      { label: "Média %", value: `${avg((c) => c.percentual)}%`, color: "text-blue-600" },
-                      { label: "Soma Média", value: avg((c) => c.estatisticas.soma), color: "" },
-                      { label: "Pares", value: avg((c) => c.estatisticas.pares), color: "text-blue-500" },
-                      { label: "Ímpares", value: avg((c) => c.estatisticas.impares), color: "text-orange-500" },
-                    ];
-                  })().map((stat) => (
-                    <div key={stat.label} className="text-center">
-                      <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-                      <p className="text-xs text-muted-foreground">{stat.label}</p>
+          {comparacoes.length > 0 && (() => {
+            const contagemFaixas: Record<string, number> = {};
+            comparacoes.forEach(c => {
+              const key = c.acertos.length;
+              contagemFaixas[key] = (contagemFaixas[key] || 0) + 1;
+            });
+            const faixas = Object.entries(contagemFaixas)
+              .map(([acertos, qtd]) => ({ acertos: Number(acertos), qtd }))
+              .sort((a, b) => b.acertos - a.acertos);
+            const totalPremio = comparacoes.reduce((s, c) => s + c.valorPremio, 0);
+
+            return (
+              <Card>
+                <CardHeader><CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-5 w-5" />Resumo Estatístico</CardTitle></CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                    {(() => {
+                      const avg = (fn: (c: ComparacaoResultado) => number) => Math.round(comparacoes.reduce((a, c) => a + fn(c), 0) / comparacoes.length);
+                      return [
+                        { label: "Média Acertos", value: avg((c) => c.acertos.length), color: "text-green-600" },
+                        { label: "Média %", value: `${avg((c) => c.percentual)}%`, color: "text-blue-600" },
+                        { label: "Soma Média", value: avg((c) => c.estatisticas.soma), color: "" },
+                        { label: "Pares", value: avg((c) => c.estatisticas.pares), color: "text-blue-500" },
+                        { label: "Ímpares", value: avg((c) => c.estatisticas.impares), color: "text-orange-500" },
+                      ];
+                    })().map((stat) => (
+                      <div key={stat.label} className="text-center">
+                        <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
+                        <p className="text-xs text-muted-foreground">{stat.label}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="border-t pt-4">
+                    <p className="font-semibold mb-2 text-sm">Acertos por Faixa ({comparacoes.length} jogos)</p>
+                    <div className="space-y-1.5">
+                      {faixas.map(f => (
+                        <div key={f.acertos} className="flex items-center gap-2">
+                          <span className="text-xs font-mono w-8 text-right">{f.acertos} ac.</span>
+                          <div className="flex-1 h-5 bg-muted rounded overflow-hidden">
+                            <div className="h-full bg-primary rounded" style={{ width: `${(f.qtd / comparacoes.length) * 100}%` }} />
+                          </div>
+                          <span className="text-xs font-bold w-8">{f.qtd}</span>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  </div>
+
+                  {totalPremio > 0 && (() => {
+                    const premioPorFaixa: Record<string, { qtd: number; valor: number; ganhadores: number; subtotal: number }> = {};
+                    comparacoes.forEach(c => {
+                      if (c.valorPremio > 0) {
+                        const key = c.faixaPremio;
+                        if (!premioPorFaixa[key]) premioPorFaixa[key] = { qtd: 0, valor: c.valorPremio, ganhadores: c.ganhadores, subtotal: 0 };
+                        premioPorFaixa[key].qtd++;
+                        premioPorFaixa[key].subtotal += c.valorPremio;
+                      }
+                    });
+                    return (
+                      <div className="border-t pt-4">
+                        <p className="font-semibold mb-2 text-sm">Simulação de Premiação</p>
+                        <div className="space-y-1">
+                          {Object.entries(premioPorFaixa).map(([faixa, d]) => (
+                            <div key={faixa} className="text-sm">
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">{faixa} × {d.qtd}</span>
+                                <span className="font-mono font-bold">
+                                  R$ {d.subtotal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                R$ {d.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/ganhador · {d.ganhadores.toLocaleString("pt-BR")} ganhador(es)
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="border-t mt-2 pt-2 bg-green-50 dark:bg-green-950 rounded-lg p-3 text-center">
+                          <p className="text-2xl font-bold text-green-700 dark:text-green-300">
+                            R$ {totalPremio.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">Total estimado com base no concurso oficial</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </CardContent>
+              </Card>
+            );
+          })()}
+          </CardContent>
           )}
-        </div>
+        </Card>
       )}
     </div>
   );

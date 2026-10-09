@@ -3,6 +3,28 @@ import { getSupabase } from "@/lib/db";
 import { getSession, getSupabaseWithAuth } from "@/lib/supabase/auth/server";
 import { isAdminUser } from "@/lib/admin";
 
+interface LoteRow {
+  id: string;
+  usuario_id: string | null;
+  loteria_id: string;
+  estrategia_id: string | null;
+  criado_em: string;
+  criado_por: string | null;
+  criador_avatar_url: string | null;
+}
+
+interface JogoRow {
+  id: string;
+  lote_id: string | null;
+  usuario_id: string | null;
+  loteria_id: string;
+  dezenas: number[];
+  score: number | null;
+  nome?: string | null;
+  score_breakdown?: Record<string, unknown> | null;
+  criado_em: string;
+}
+
 export async function GET() {
   try {
     const session = await getSession();
@@ -23,45 +45,60 @@ export async function GET() {
       minhaFoto = fotoRow?.avatar_base64 || session?.user?.user_metadata?.avatar_url || null;
     }
 
-    // Histórico COMPARTILHADO: busca todos os lotes/jogos (política RLS permite leitura geral)
-    const { data: lotes, error: lotesError } = await supabase
-      .from("lotes_geracao")
-      .select("*")
-      .order("criado_em", { ascending: false });
+    // Histórico COMPARTILHADO: busca TODOS os lotes/jogos em paginação
+    // (sem limite, o PostgREST padrão limita a 1000 linhas por request)
+    const TAMANHO_PAGINA = 1000;
+    const lotes: LoteRow[] = [];
+    const jogosAcumulados: JogoRow[] = [];
 
-    if (lotesError) {
-      console.error("[API] Erro ao buscar lotes:", lotesError);
-      return NextResponse.json({ lotes: [], stats: { totalJogos: 0, totalLotes: 0, loteriasUsadas: [], melhorScore: 0, mediaScore: 0 } });
+    for (let offset = 0; ; offset += TAMANHO_PAGINA) {
+      const { data: paginaLotes, error } = await supabase
+        .from("lotes_geracao")
+        .select("*")
+        .order("criado_em", { ascending: false })
+        .range(offset, offset + TAMANHO_PAGINA - 1);
+      if (error) {
+        console.error("[API] Erro ao buscar lotes:", error);
+        break;
+      }
+      if (!paginaLotes || paginaLotes.length === 0) break;
+      lotes.push(...paginaLotes);
+      if (paginaLotes.length < TAMANHO_PAGINA) break;
     }
 
-    const { data: jogos, error: jogosError } = await supabase
-      .from("jogos_gerados")
-      .select("*")
-      .order("criado_em", { ascending: false });
-
-    if (jogosError) {
-      console.error("[API] Erro ao buscar jogos:", jogosError);
-      return NextResponse.json({ lotes: [], stats: { totalJogos: 0, totalLotes: 0, loteriasUsadas: [], melhorScore: 0, mediaScore: 0 } });
+    for (let offset = 0; ; offset += TAMANHO_PAGINA) {
+      const { data: paginaJogos, error } = await supabase
+        .from("jogos_gerados")
+        .select("*")
+        .order("criado_em", { ascending: false })
+        .range(offset, offset + TAMANHO_PAGINA - 1);
+      if (error) {
+        console.error("[API] Erro ao buscar jogos:", error);
+        break;
+      }
+      if (!paginaJogos || paginaJogos.length === 0) break;
+      jogosAcumulados.push(...paginaJogos);
+      if (paginaJogos.length < TAMANHO_PAGINA) break;
     }
 
     const loteriaSet = new Set<string>();
-    lotes?.forEach((lote) => loteriaSet.add(lote.loteria_id));
+    lotes.forEach((lote) => loteriaSet.add(lote.loteria_id));
 
-    const scores = jogos?.map((j) => j.score).filter((s): s is number => s !== null) || [];
+    const scores = jogosAcumulados.map((j) => j.score).filter((s): s is number => s !== null) || [];
     const melhorScore = scores.length > 0 ? Math.max(...scores) : 0;
     const mediaScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
     const stats = {
-      totalJogos: jogos?.length || 0,
-      totalLotes: lotes?.length || 0,
+      totalJogos: jogosAcumulados.length,
+      totalLotes: lotes.length,
       loteriasUsadas: Array.from(loteriaSet),
       melhorScore,
       mediaScore,
     };
 
     // jogos que pertencem ao usuário logado → podem ser excluídos
-    const jogosPorLote = new Map<string, typeof jogos>();
-    (jogos || []).forEach((j) => {
+    const jogosPorLote = new Map<string, typeof jogosAcumulados>();
+    jogosAcumulados.forEach((j) => {
       if (!j.lote_id) return;
       const lista = jogosPorLote.get(j.lote_id) || [];
       lista.push(j);
@@ -69,7 +106,7 @@ export async function GET() {
     });
 
     const lotesComJogos = lotes
-    ?.map((lote) => {
+    .map((lote) => {
       const ehMeuLote = userId != null && lote.usuario_id === userId;
       const foto = lote.criador_avatar_url || (ehMeuLote ? minhaFoto : null);
       return {
@@ -108,7 +145,7 @@ export async function POST(request: Request) {
     const userId = session?.user?.id ?? null;
 
     const body = await request.json();
-    const { loteria, estrategia, jogos } = body;
+    const { loteria, jogos } = body as { loteria?: string; jogos?: Array<{ dezenas: number[]; score: number | null; nome?: string }> };
 
     if (!loteria || !jogos || !Array.isArray(jogos) || jogos.length === 0) {
       return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
@@ -118,7 +155,15 @@ export async function POST(request: Request) {
     const supabase = session?.user ? await getSupabaseWithAuth() : getSupabase();
 
     const criadoPor = session?.user?.user_metadata?.nome || session?.user?.email?.split("@")[0] || null;
-    const avatarUrl = session?.user?.user_metadata?.avatar_url || null;
+    let avatarUrl = session?.user?.user_metadata?.avatar_url || null;
+    if (userId) {
+      const { data: fotoRow } = await supabase
+        .from('perfil_foto')
+        .select('avatar_base64')
+        .eq('usuario_id', userId)
+        .single();
+      if (fotoRow?.avatar_base64) avatarUrl = fotoRow.avatar_base64;
+    }
 
     // Criar lote
     const { data: lote, error: loteError } = await supabase

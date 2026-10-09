@@ -81,7 +81,7 @@ export default function DashboardPage() {
     }
   }, [user]);
 
-  const carregarDados = async () => {
+  async function carregarDados() {
     setIsLoadingData(true);
     try {
       const response = await fetch("/api/lotes");
@@ -101,7 +101,7 @@ export default function DashboardPage() {
     } finally {
       setIsLoadingData(false);
     }
-  };
+  }
 
   const frequencyData = useMemo(() => {
     const counts: Record<number, number> = {};

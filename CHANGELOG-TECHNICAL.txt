@@ -1,73 +1,111 @@
-================================================================================
+===============================================================================
 CHANGELOG TÉCNICO - Loterias CAIXA Omega
-Versão: 2.4.1
-Data: 10/09/2026
-================================================================================
+Versão: 3.0.0
+Data: 09/10/2026
+===============================================================================
+
+RESUMO DA VERSÃO
+----------------
+Regras reais por modalidade (9 loterias), motor posicional para Super Sete,
+correção de preços/faixas/dias de sorteio conforme fontes oficiais da CAIXA,
+endurecimento de autorização de admin, correção de hooks React e lint zerado.
+
+===============================================================================
+MUDANÇAS DETALHADAS
+===============================================================================
+
+1. NOVO: Regras por Modalidade
+   Arquivos: src/lib/loterias.ts, src/modules/lottery/*, database/migration_regras_loterias.sql
+   - Contrato RegraLoteria (gerar/validar/conferir/custo) com componentes de
+     conjunto e posicional.
+   - Super Sete posicional: 7 colunas 0-9, conferência por posição, aposta
+     múltipla 8-14 (1-2/coluna) e 15-21 (2-3/coluna), custo por produto.
+   - Extras: Timemania (Time), Dia de Sorte (Mês), +Milionária (Trevos).
+   - Preços/faixas corrigidos: Mega-Sena 6-20/R$6,00, Lotofácil R$3,50, Quina
+     R$3,00, Lotomania R$3,00, Dupla Sena R$3,00, Timemania R$3,50, Dia de Sorte
+     R$2,50, +Milionária 6-12, Super Sete R$3,00. Dias de sorteio atualizados.
+
+2. SEGURANÇA: Autorização de admin
+   Arquivos: src/lib/admin.ts, src/lib/supabase/auth/server.ts, src/app/api/admin/*,
+             database/migration_camuflagem.sql
+   - is_admin usa app_metadata (gravável só por service-role); user_metadata é
+     ignorado (escalação pelo próprio usuário).
+   - Removido fallback de prefixo de e-mail; e-mail hardcoded removido do SQL.
+   - getSession -> getUser nas rotas de admin (token validado no Auth server).
+
+3. CORREÇÃO: Bugs de React
+   Arquivos: src/app/criar-jogo/[loteria]/page.tsx, analise, comparar, historico,
+             dashboard, estatisticas, concursos, sincronizar
+   - Hooks condicionais removidos; Date.now() fora do render; funções de fetch
+     reordenadas; Date.now capturado em state (agora).
+
+4. CORREÇÃO: Preço único na UI
+   Arquivos: src/lib/loterias.ts (getPreco/getOpcoesQtd), criar-jogo, gerar, bolao
+   - Tabelas de preço hardcoded removidas (estavam desatualizadas); cálculo
+     centralizado por regra oficial.
+
+5. LIMPEZA: lint e tipos
+   - 0 erros de ESLint (18 -> 0); DTOs tipados em api/lotes, analise e historico;
+     script "typecheck" adicionado; NEXT_PUBLIC_ADMIN_EMAIL no .env.example.
+
+===============================================================================
+CHANGELOG TÉCNICO - Loterias CAIXA Omega
+Versão: 2.7.5
+Data: 11/09/2026
+===============================================================================
 
 RESUMO DA VERSÃO
 -----------------
-Score system corrigido (estatísticas reais via fallback API externa + geração
-até atingir a quantidade), nomeação de jogos individuais com lista completa na
-análise/comparação, e remoção total de localStorage (100% Supabase).
+Limite de geração ampliado para 250 jogos, camuflagem administrativa por
+usuário (Super Sete + Lotofácil), avatar corrigido para todos os usuários,
+sincronização sem limite fixo, filtros e UI aprimorados na comparação,
+resumo estatístico por faixa e simulação de premiação com dados oficiais.
 
-================================================================================
+===============================================================================
 MUDANÇAS DETALHADAS
-================================================================================
+===============================================================================
 
-1. CORREÇÃO: Score System
-   Arquivos: src/app/api/gerar/[loteria]/route.ts, src/modules/scoring/index.ts
-   - buscarEstatisticasReais: busca da API externa (50 concursos) quando o banco
-     está vazio (antes retornava stats vazias e zerava o score)
-   - Geração agora avalia 6 candidatos por tentativa (estratégia + variações
-     aleatórias) até atingir a quantidade pedida
-   - Sem duplicatas (Set de chaves)
-   - Relaxamento progressivo de score se o mínimo for inatingível (mantém aviso
-     via score_relaxado)
-   - tentativasMaximas: max(10000, quantidade*200) e timeout 120s
-   - Normalização de frequência pelo valor máximo (não /10 fixo)
+1. NOVO: Limite de Geração 250 Jogos
+   Arquivos: src/app/gerar/[loteria]/page.tsx, src/app/api/gerar/[loteria]/route.ts
+   - Input numérico (+/-) agora aceita 1 até 250 jogos.
+   - Validação na API aceita até 250 jogos por geração.
 
-2. NOVO: Nomear Jogos Individuais
-   Migração: database/migration_nome_jogos.sql
-   - Coluna `nome` adicionada em jogos_gerados
-   - PATCH /api/lotes/[id] para renomear jogo salvo
-   - POST /api/lotes aceita `nome` por jogo
-   - Análise mostra lista completa de Jogos Salvos (nome, data e dia da geração,
-     score, dezenas), com renomeação inline
-   - Comparar lista os jogos salvos nomeados por data para seleção
-   - Gerar: botão Salvar Todos + botão salvar individual por jogo
+2. NOVO: Camuflagem/Ilusão por Usuário
+   Migração: database/migration_perfil_foto.sql
+   - Coluna `camuflagem_ativa BOOLEAN DEFAULT FALSE` em perfil_foto.
+   - API admin: /api/admin/camuflagem/[userId] (GET/POST toggle).
+   - Geração: quando camuflagem_ativa, quantidade >= 30 e loteria
+     Supersete/Lotofácil, insere até 3 jogos fictícios com score 100.
 
-3. SUPABASE 100% (sem localStorage)
-   Arquivos: src/app/layout.tsx, src/components/layout/theme-toggle.tsx,
-             src/app/api/usuario/configuracoes/route.ts
-   - Tema (light/dark/system) salvo no banco via user_metadata
-   - Removido script inline de localStorage no layout
-   - grep confirma: zero ocorrências de localStorage/sessionStorage
+3. CORREÇÃO: Avatar para todos os usuários
+   Arquivos: src/app/api/gerar/[loteria]/route.ts, src/app/api/lotes/route.ts
+   - Avatar passa a ser buscado da tabela perfil_foto (não só do metadata),
+     garantindo que todo usuário autenticado exiba sua foto no histórico.
 
-4. CORREÇÃO: Auth 'Não autorizado'
-   Arquivos: src/lib/supabase/auth/provider.tsx, src/lib/supabase/auth/server.ts,
-             src/app/api/usuario/configuracoes/route.ts, src/app/api/usuario/foto/route.ts
-   - Provider usa createBrowserClient do @supabase/ssr (cookies, não localStorage)
-   - getSupabaseWithAuth retorna cliente SSR autenticado para updateUser
-   - Rotas de usuário usam cliente autenticado (corrige erro 401)
+4. CORREÇÃO: Sincronização sem limite fixo
+   Arquivos: src/app/api/sync/batch-todas/route.ts, src/app/sincronizar/page.tsx
+   - Removido Math.min(1000, ...) no batch-todas.
+   - Botão "Sincronizar Todas" agora itera loteria por loteria (pequenas
+     requests, respeitando timeout do Vercel).
 
-5. NOVO: Concursos — Baixar Todos
-   Arquivos: src/app/concursos/page.tsx, src/app/api/sync/batch/[loteria]/route.ts,
-             src/app/api/sync/batch-todas/route.ts (NOVO)
-   - Botão "Baixar Todos" sincroniza o histórico completo de uma vez
-   - Limite de batch ampliado de 200 → 1000 concursos
-   - Endpoint batch-todas sincroniza todas as loterias em uma chamada
-   - A página sincronizar usa batch-todas com fallback sequencial
+5. MELHORIA: Comparação de Lotes
+   Arquivos: src/app/comparar/page.tsx, src/app/historico/jogos/page.tsx
+   - Jogos ordenados do maior para o menor percentual de acertos.
+   - Resumo estatístico com contagem por faixa de acertos (barra + qtd).
+   - Simulação de premiação com dados oficiais do concurso:
+     subtotais por faixa e total de premiação líquida.
+   - Filtros por período (tudo/7/30 dias) e busca por nome/autor.
+   - Exibição do nome do lote na listagem do histórico.
 
-================================================================================
+===============================================================================
 MIGRAÇÕES NECESSÁRIAS (Executar no Supabase SQL Editor)
-================================================================================
+===============================================================================
 
-1. Migration nome dos jogos:
-   - Arquivo: database/migration_nome_jogos.sql
-   - Copiar e colar no Supabase SQL Editor e Executar
-   (ALTER TABLE jogos_gerados ADD COLUMN IF NOT EXISTS nome TEXT;)
+1. Migration perfil_foto (camuflagem_ativa):
+   - Arquivo: database/migration_perfil_foto.sql
+   - Copiar e colar no Supabase SQL Editor e Executar.
 
-================================================================================
-VERSÃO: 2.4.1
+===============================================================================
+VERSÃO: 2.7.5
 STATUS: Deployado
-================================================================================
+===============================================================================

@@ -10,6 +10,7 @@ import { ShieldCheck, Trash2, Users, History, RefreshCw, ArrowLeft, User } from 
 
 interface AdminLote {
   id: string;
+  usuario_id: string | null;
   loteria: string;
   criado_em: string;
   criado_por: string | null;
@@ -18,28 +19,22 @@ interface AdminLote {
   jogos: { id: string; dezenas: number[]; score: number | null }[];
 }
 
+interface AdminUsuario {
+  id: string;
+  nome: string;
+  avatar: string | null;
+  camuflagemAtiva: boolean;
+}
+
 export default function AdminPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
-    const [camuflagem, setCamuflagem] = useState<boolean>(false);
-    const toggleCamuflagem = async () => {
-      const res = await fetch(`/api/admin/camuflagem/${user?.id}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id, ativo: !camuflagem }),
-      });
-      if (res.ok) setCamuflagem(!camuflagem);
-    };
-    useEffect(() => {
-      if (user?.id) {
-        fetch(`/api/admin/camuflagem/${user.id}`).then(r => r.json()).then(d => setCamuflagem(d.camuflagem_ativa));
-      }
-    }, [user?.id]);
-
   const [lotes, setLotes] = useState<AdminLote[]>([]);
+  const [usuarios, setUsuarios] = useState<AdminUsuario[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [carregando, setCarregando] = useState(true);
   const [excluindo, setExcluindo] = useState<string | null>(null);
+  const [salvandoCamuflagem, setSalvandoCamuflagem] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -55,6 +50,41 @@ export default function AdminPage() {
         const data = await res.json();
         setIsAdmin(data.is_admin === true);
         setLotes(data.lotes || []);
+
+        // Deriva a lista de usuários a partir dos lotes
+        const mapa = new Map<string, AdminUsuario>();
+        (data.lotes || []).forEach((lote: AdminLote) => {
+          if (!lote.usuario_id) return;
+          if (!mapa.has(lote.usuario_id)) {
+            mapa.set(lote.usuario_id, {
+              id: lote.usuario_id,
+              nome: lote.criado_por || lote.usuario_id.slice(0, 8),
+              avatar: lote.criador_avatar_url || null,
+              camuflagemAtiva: false,
+            });
+          }
+        });
+        setUsuarios(Array.from(mapa.values()));
+
+        // Busca o status atual de camuflagem de cada usuário
+        const comStatus = await Promise.all(
+          Array.from(mapa.keys()).map(async (uid) => {
+            try {
+              const r = await fetch(`/api/admin/camuflagem/${uid}`);
+              if (r.ok) {
+                const d = await r.json();
+                return { uid, ativo: d.camuflagem_ativa === true };
+              }
+            } catch { /* ignora */ }
+            return { uid, ativo: false };
+          })
+        );
+        setUsuarios(prev =>
+          prev.map(u => ({
+            ...u,
+            camuflagemAtiva: comStatus.find(c => c.uid === u.id)?.ativo ?? false,
+          }))
+        );
       }
     } catch (e) {
       console.error("Erro ao carregar:", e);
@@ -65,7 +95,6 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (user) carregar();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const excluir = async (id: string) => {
@@ -83,6 +112,30 @@ export default function AdminPage() {
       console.error("Erro ao excluir:", e);
     } finally {
       setExcluindo(null);
+    }
+  };
+
+  const toggleCamuflagemUsuario = async (uid: string) => {
+    setSalvandoCamuflagem(uid);
+    try {
+      const atual = usuarios.find(u => u.id === uid)?.camuflagemAtiva || false;
+      const res = await fetch(`/api/admin/camuflagem/${uid}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ativo: !atual }),
+      });
+      if (res.ok) {
+        setUsuarios(prev =>
+          prev.map(u => u.id === uid ? { ...u, camuflagemAtiva: !atual } : u)
+        );
+      } else {
+        alert("Não foi possível alterar a camuflagem.");
+      }
+    } catch (e) {
+      console.error("Erro ao alternar camuflagem:", e);
+      alert("Erro ao alterar camuflagem.");
+    } finally {
+      setSalvandoCamuflagem(null);
     }
   };
 
@@ -146,6 +199,51 @@ export default function AdminPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Gestão de camuflagem por usuário */}
+      {usuarios.length > 0 && (
+        <div className="mb-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">Camuflagem por Usuário</CardTitle>
+              <CardDescription>
+                Controla a inserção de jogos &quot;premiados&quot; (ilusão) ao gerar 30+ jogos em Super Sete e Lotofácil.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {usuarios.map(u => (
+                <div key={u.id} className="flex items-center gap-3 rounded-lg border p-2.5">
+                  {u.avatar ? (
+                    <img src={u.avatar} alt="Foto" className="h-8 w-8 rounded-full object-cover border" />
+                  ) : (
+                    <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary">
+                      <User className="h-4 w-4" />
+                    </span>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{u.nome}</p>
+                    <p className="text-xs text-muted-foreground truncate">{u.id}</p>
+                  </div>
+                  <Badge variant={u.camuflagemAtiva ? "default" : "secondary"} className="shrink-0">
+                    {u.camuflagemAtiva ? "Ativa" : "Inativa"}
+                  </Badge>
+                  <Button
+                    variant={u.camuflagemAtiva ? "destructive" : "outline"}
+                    size="sm"
+                    onClick={() => toggleCamuflagemUsuario(u.id)}
+                    disabled={salvandoCamuflagem === u.id}
+                    className="shrink-0"
+                  >
+                    {salvandoCamuflagem === u.id ? (
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    ) : u.camuflagemAtiva ? "Desativar" : "Ativar"}
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Lista de lotes */}
       {carregando ? (

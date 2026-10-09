@@ -34,6 +34,117 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "3.0.0",
+    date: "2026-10-09",
+    type: "major",
+    tag: "Regras oficiais + Motor por modalidade + Segurança",
+    sections: [
+      {
+        title: "Regras Oficiais por Modalidade",
+        icon: <Target className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Motor de regras por loteria (gerar, validar, conferir, custo) para as 9 modalidades",
+          "Super Sete agora é posicional: 7 colunas de 0 a 9 com conferência por posição",
+          "Aposta múltipla do Super Sete: 8 a 14 (1-2 números/coluna) e 15 a 21 (2-3/coluna)",
+          "Extras oficiais: Time da Timemania, Mês do Dia de Sorte, Trevos da +Milionária",
+          "Preços e faixas corrigidos conforme as fontes oficiais da CAIXA",
+          "Dias de sorteio de cada modalidade atualizados",
+        ],
+      },
+      {
+        title: "Conferência e Geração",
+        icon: <GitCompare className="w-5 h-5" />,
+        color: "text-blue-500",
+        items: [
+          "Comparar com conferência posicional do Super Sete e grade por coluna",
+          "Geração roteada pelo motor com deduplicação pela chave da regra",
+          "Custo calculado por combinação (produto) no Super Sete",
+          "Tabelas de preços hardcoded removidas (agora tudo vem da config central)",
+        ],
+      },
+      {
+        title: "Segurança",
+        icon: <ShieldCheck className="w-5 h-5" />,
+        color: "text-purple-500",
+        items: [
+          "Admin identificado apenas por app_metadata (user_metadata ignorado)",
+          "Rotas de admin validam o token no servidor de autenticação",
+          "E-mail hardcoded removido da função is_admin do banco",
+        ],
+      },
+      {
+        title: "Correções",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+        color: "text-rose-500",
+        items: [
+          "Hooks condicionais removidos (regras do React)",
+          "Date.now() fora do render em Análise, Comparar e Histórico",
+          "Lint zerado (0 erros) e typecheck limpo",
+          "45 testes passando, incluindo Super Sete e conferência",
+        ],
+      },
+      {
+        title: "Governança",
+        icon: <Layers className="w-5 h-5" />,
+        color: "text-cyan-500",
+        items: [
+          "CLAUDE.md e AGENTS.md adaptados ao projeto",
+          "ADRs, SPEC de regras das loterias e plano de correções em docs/",
+          "Migrations novas: regras das loterias e camuflagem",
+        ],
+      },
+    ],
+  },
+  {
+    version: "2.7.5",
+    date: "2026-09-11",
+    type: "minor",
+    tag: "Limite 250 + Camuflagem + Comparação refinada",
+    sections: [
+      {
+        title: "Geração de Jogos",
+        icon: <Target className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Limite de geração ampliado de 100 para 250 jogos",
+        ],
+      },
+      {
+        title: "Comparação de Lotes",
+        icon: <GitCompare className="w-5 h-5" />,
+        color: "text-blue-500",
+        items: [
+          "Jogos ordenados do maior para o menor percentual de acertos",
+          "Resumo estatístico com contagem por faixa de acertos",
+          "Simulação de premiação com dados oficiais do concurso",
+          "Subtotais por faixa e total de premiação líquida",
+          "Filtros por período e busca por nome/autor dos lotes",
+        ],
+      },
+      {
+        title: "Camuflagem Administrativa",
+        icon: <ShieldCheck className="w-5 h-5" />,
+        color: "text-purple-500",
+        items: [
+          "Admin pode ativar/desativar camuflagem por usuário",
+          "Sistema de ilusão aplicado em Super Sete e Lotofácil (30+ jogos)",
+        ],
+      },
+      {
+        title: "Correções",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+        color: "text-rose-500",
+        items: [
+          "Avatar exibido corretamente para todos os usuários",
+          "Sincronização de todas as loterias corrigida",
+          "Histórico sem limite de lotes (paginação completa)",
+          "Name do lote exibido na listagem do histórico",
+        ],
+      },
+    ],
+  },
+  {
     version: "2.7.0",
     date: "2026-09-10",
     type: "minor",

@@ -8,18 +8,15 @@ const ADMIN_EMAILS = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || "")
 export function isAdminUser(user: User | null | undefined): boolean {
   if (!user) return false;
 
-  // role/metadata definido manualmente no banco
-  if (user.user_metadata?.role === "admin" || user.user_metadata?.is_admin === true) {
+  // role/metadata definido pelo service-role (não gravável pelo usuário).
+  // user_metadata é descartado: é gravável pelo próprio usuário via updateUser.
+  if (user.app_metadata?.role === "admin" || user.app_metadata?.is_admin === true) {
     return true;
   }
 
   // email em allowlist (NEXT_PUBLIC_ADMIN_EMAIL)
   const email = (user.email || "").toLowerCase();
   if (ADMIN_EMAILS.includes(email)) return true;
-
-  // fallback: prefixo vitorvinhal90 é admin (usuário principal)
-  const prefixo = email.split("@")[0];
-  if (prefixo === "vitorvinhal90") return true;
 
   return false;
 }

@@ -18,6 +18,7 @@ interface JogoHistorico {
   criado_em: string;
   estrategia: string;
   nome?: string | null;
+  score_breakdown?: { camuflagem?: boolean } | null;
 }
 
 interface LoteHistorico {
@@ -39,6 +40,26 @@ interface UsuarioAtualOpt {
   avatar_url: string | null;
 }
 
+interface LoteRaw {
+  id: string;
+  loteria?: string | null;
+  loteria_id?: string | null;
+  criado_em: string;
+  estrategia?: string | null;
+  estrategia_id?: string | null;
+  criado_por?: string | null;
+  criador_avatar_url?: string | null;
+  usuario_pode_excluir?: boolean | null;
+  jogos?: Array<{
+    id: string;
+    dezenas?: number[] | null;
+    score?: number | null;
+    criado_em?: string | null;
+    nome?: string | null;
+    score_breakdown?: Record<string, unknown> | null;
+  }>;
+}
+
 export default function HistoricoJogosPage() {
   const router = useRouter();
   const { user } = useAuth();
@@ -47,6 +68,8 @@ export default function HistoricoJogosPage() {
   const [lotes, setLotes] = useState<LoteHistorico[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [usuariosCount, setUsuariosCount] = useState(0);
+  const [loteExpandidoId, setLoteExpandidoId] = useState<string | null>(null);
+  const [agora, setAgora] = useState(0);
 
   const fetchJogos = async () => {
     setIsLoading(true);
@@ -54,22 +77,23 @@ export default function HistoricoJogosPage() {
       const response = await fetch("/api/lotes");
       if (response.ok) {
         const data = await response.json();
-        const listaLotes: LoteHistorico[] = (data.lotes || []).map((lote: any) => ({
+        const listaLotes: LoteHistorico[] = (data.lotes as LoteRaw[]).map((lote) => ({
           id: lote.id,
-          loteria: lote.loteria || lote.loteria_id,
+          loteria: lote.loteria || lote.loteria_id || "desconhecida",
           criado_em: lote.criado_em,
-          estrategia: lote.estrategia || "manual",
+          estrategia: lote.estrategia || lote.estrategia_id || "manual",
           criado_por: lote.criado_por || null,
           criador_avatar_url: lote.criador_avatar_url || null,
           usuario_pode_excluir: lote.usuario_pode_excluir || false,
-          jogos: (lote.jogos || []).map((j: any) => ({
+          jogos: (lote.jogos || []).map((j) => ({
             id: j.id,
-            loteria: lote.loteria || lote.loteria_id,
+            loteria: lote.loteria || lote.loteria_id || "desconhecida",
             dezenas: j.dezenas || [],
             score: j.score ?? null,
-            criado_em: j.criado_em,
-            estrategia: lote.estrategia || "manual",
+            criado_em: j.criado_em ?? lote.criado_em,
+            estrategia: lote.estrategia || lote.estrategia_id || "manual",
             nome: j.nome || null,
+            score_breakdown: j.score_breakdown || null,
           })),
         }));
         setLotes(listaLotes);
@@ -87,6 +111,7 @@ export default function HistoricoJogosPage() {
   };
 
   useEffect(() => {
+    setAgora(Date.now());
     fetchJogos();
   }, []);
 
@@ -95,9 +120,9 @@ export default function HistoricoJogosPage() {
       if (loteriaFiltro !== "todas" && l.loteria !== loteriaFiltro) return false;
       if (filtroPeriodo === "todos") return true;
       const dias = parseInt(filtroPeriodo, 10);
-      return new Date(l.criado_em).getTime() >= Date.now() - dias * 86400000;
+      return new Date(l.criado_em).getTime() >= agora - dias * 86400000;
     });
-  }, [lotes, loteriaFiltro, filtroPeriodo]);
+  }, [lotes, loteriaFiltro, filtroPeriodo, agora]);
 
   const formatarData = (dataISO: string) => {
     const d = new Date(dataISO);
@@ -255,9 +280,14 @@ export default function HistoricoJogosPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {lotesFiltrados.map((lote) => (
+          {lotesFiltrados.map((lote) => {
+                const expandido = loteExpandidoId === lote.id;
+                return (
             <Card key={lote.id}>
-              <CardHeader className="pb-3">
+              <CardHeader
+                className="pb-3 cursor-pointer hover:bg-accent/40 transition-colors"
+                onClick={() => setLoteExpandidoId(expandido ? null : lote.id)}
+              >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex items-center gap-3 min-w-0">
                     {/* Foto do criador */}
@@ -274,6 +304,7 @@ export default function HistoricoJogosPage() {
                     )}
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
+                        {lote.nome && <span className="text-lg font-semibold">{lote.nome}</span>}
                         <span className="text-lg font-bold">
                           {loteIcone(lote.loteria)} {LOTERIAS.find((l) => l.slug === lote.loteria)?.nome || lote.loteria}
                         </span>
@@ -293,13 +324,13 @@ export default function HistoricoJogosPage() {
 
                   {/* Ações */}
                   <div className="flex items-center gap-1 shrink-0 flex-wrap">
-                    <Button variant="ghost" size="icon-sm" title="Copiar lote" onClick={() => copiarLote(lote)}>
+                    <Button variant="ghost" size="icon-sm" title="Copiar lote" onClick={(e) => { e.stopPropagation(); copiarLote(lote); }}>
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon-sm" title="Comparar" onClick={() => router.push(`/comparar?loteId=${lote.id}`)}>
+                    <Button variant="ghost" size="icon-sm" title="Comparar" onClick={(e) => { e.stopPropagation(); router.push(`/comparar?loteId=${lote.id}`); }}>
                       <GitCompareArrows className="h-4 w-4" />
                     </Button>
-                    <Button variant="ghost" size="icon-sm" title="Compartilhar" onClick={() => compartilharLote(lote)}>
+                    <Button variant="ghost" size="icon-sm" title="Compartilhar" onClick={(e) => { e.stopPropagation(); compartilharLote(lote); }}>
                       <Share2 className="h-4 w-4" />
                     </Button>
                     {lote.usuario_pode_excluir && (
@@ -307,15 +338,19 @@ export default function HistoricoJogosPage() {
                         variant="ghost"
                         size="icon-sm"
                         title="Excluir lote"
-                        onClick={() => excluirLote(lote.id)}
+                        onClick={(e) => { e.stopPropagation(); excluirLote(lote.id); }}
                         className="text-destructive hover:text-destructive"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     )}
+                    <span className="text-xs text-muted-foreground ml-1 shrink-0">
+                      {expandido ? "▲" : "▼"}
+                    </span>
                   </div>
                 </div>
               </CardHeader>
+              {expandido && (
               <CardContent>
                 <div className="space-y-4">
                   {lote.jogos.map((jogo, idx) => (
@@ -334,6 +369,14 @@ export default function HistoricoJogosPage() {
                         ))}
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
+                        {jogo.score_breakdown?.camuflagem && (
+                          <span
+                            title="Jogo camuflado"
+                            className="inline-flex items-center justify-center h-6 w-6 rounded-full border border-dashed border-amber-400/60 text-amber-500 text-xs"
+                          >
+                            ✦
+                          </span>
+                        )}
                         {jogo.nome && <Badge variant="outline" className="max-w-[140px] truncate">{jogo.nome}</Badge>}
                         {jogo.score !== null && (
                           <Badge variant={jogo.score >= 80 ? "default" : "secondary"} className="text-xs">
@@ -361,8 +404,10 @@ export default function HistoricoJogosPage() {
                   ))}
                 </div>
               </CardContent>
+              )}
             </Card>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

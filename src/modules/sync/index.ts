@@ -194,10 +194,12 @@ function parserCAIXA(data: unknown, loteria: Loteria): Concurso | null {
     // Parse premiacoes from CAIXA format
     const premiacoes: Array<{ descricao: string; acertos: number; ganhadores: number; premio: number }> = [];
     if (Array.isArray(d.listaRateioPremio)) {
-      (d.listaRateioPremio as Record<string, unknown>[]).forEach((p, idx) => {
+      (d.listaRateioPremio as Record<string, unknown>[]).forEach((p) => {
+        const descricao = String(p.descricaoFaixa || p.descricao || '');
+        const match = descricao.match(/(\d+)\s*acertos?/i);
         premiacoes.push({
-          descricao: String(p.descricao || ''),
-          acertos: premiacoes.length + 1,
+          descricao,
+          acertos: match ? Number(match[1]) : Number(p.faixa || 0),
           ganhadores: Number(p.numeroDeGanhadores || 0),
           premio: Number(p.valorPremio || 0),
         });
@@ -238,10 +240,12 @@ function parserFallback(data: unknown, loteria: Loteria): Concurso | null {
     const premiacoes: Array<{ descricao: string; acertos: number; ganhadores: number; premio: number }> = [];
     if (Array.isArray(d.premiacoes)) {
       (d.premiacoes as Record<string, unknown>[]).forEach((p) => {
+        const descricao = String(p.descricao || '');
+        const match = descricao.match(/(\d+)\s*acertos?/i);
         premiacoes.push({
-          descricao: String(p.descricao || ''),
-          acertos: Number(p.faixa || 0),
-          ganhadores: Number(p.ganhadores || 0),
+          descricao,
+          acertos: match ? Number(match[1]) : Number(p.faixa || 0),
+          ganhadores: Number(p.ganhadores || p.numeroDeGanhadores || 0),
           premio: Number(p.valorPremio || 0),
         });
       });

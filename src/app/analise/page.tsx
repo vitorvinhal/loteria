@@ -43,6 +43,7 @@ interface JogoSalvo {
   criado_em: string;
   estrategia: string;
   nome?: string | null;
+  score_breakdown?: { camuflagem?: boolean } | null;
 }
 
 interface LoteSalvo {
@@ -54,6 +55,26 @@ interface LoteSalvo {
   criador_avatar_url: string | null;
   usuario_pode_excluir: boolean;
   jogos: JogoSalvo[];
+}
+
+interface LoteRaw {
+  id: string;
+  loteria?: string | null;
+  loteria_id?: string | null;
+  criado_em: string;
+  estrategia?: string | null;
+  estrategia_id?: string | null;
+  criado_por?: string | null;
+  criador_avatar_url?: string | null;
+  usuario_pode_excluir?: boolean | null;
+  jogos?: Array<{
+    id: string;
+    dezenas?: number[] | null;
+    score?: number | null;
+    criado_em?: string | null;
+    nome?: string | null;
+    score_breakdown?: Record<string, unknown> | null;
+  }>;
 }
 
 export default function AnalisePage() {
@@ -73,6 +94,9 @@ export default function AnalisePage() {
   const [editandoJogo, setEditandoJogo] = useState<string | null>(null);
   const [nomeEdicao, setNomeEdicao] = useState("");
   const [filtroPeriodo, setFiltroPeriodo] = useState<"todos" | "7" | "30">("todos");
+  const [filtroNome, setFiltroNome] = useState<string>("");
+  const [loteExpandidoId, setLoteExpandidoId] = useState<string | null>(null);
+  const [agora, setAgora] = useState(0);
 
   const loteria = LOTERIAS.find(l => l.slug === loteriaSlug);
 
@@ -89,8 +113,8 @@ export default function AnalisePage() {
 
   // Fetch saved games when loteria changes
   useEffect(() => {
+    setAgora(Date.now());
     fetchJogosSalvos();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const jogosDaLoteria = lotesSalvos.flatMap((lote) => lote.jogos).filter(j => j.loteria === loteriaSlug);
@@ -99,8 +123,10 @@ export default function AnalisePage() {
     if (loteriaSlug !== "todas" && lote.loteria !== loteriaSlug) return false;
     if (filtroPeriodo === "todos") return true;
     const dias = parseInt(filtroPeriodo, 10);
-    const limite = Date.now() - dias * 86400000;
-    return new Date(lote.criado_em).getTime() >= limite;
+    const limite = agora - dias * 86400000;
+    if (new Date(lote.criado_em).getTime() < limite) return false;
+    if (filtroNome && !(lote.criado_por || "").toLowerCase().includes(filtroNome.toLowerCase()) && !(lote.jogos[0]?.nome || "").toLowerCase().includes(filtroNome.toLowerCase())) return false;
+    return true;
   });
 
   const jogoSelecionado = jogosDaLoteria.find(j => j.id === jogoSalvoSelecionado);
@@ -181,28 +207,29 @@ export default function AnalisePage() {
     }
   };
 
-  const fetchJogosSalvos = async () => {
+  async function fetchJogosSalvos() {
     setCarregandoJogos(true);
     try {
       const response = await fetch("/api/lotes");
       if (response.ok) {
         const data = await response.json();
-        const lotes: LoteSalvo[] = (data.lotes || []).map((lote: any) => ({
+        const lotes: LoteSalvo[] = (data.lotes as LoteRaw[]).map((lote) => ({
           id: lote.id,
-          loteria: lote.loteria || lote.loteria_id,
+          loteria: lote.loteria || lote.loteria_id || "desconhecida",
           criado_em: lote.criado_em,
-          estrategia: lote.estrategia || "manual",
+          estrategia: lote.estrategia || lote.estrategia_id || "manual",
           criado_por: lote.criado_por || null,
           criador_avatar_url: lote.criador_avatar_url || null,
           usuario_pode_excluir: lote.usuario_pode_excluir || false,
-          jogos: (lote.jogos || []).map((j: any) => ({
+          jogos: (lote.jogos || []).map((j) => ({
             id: j.id,
-            loteria: lote.loteria || lote.loteria_id,
+            loteria: lote.loteria || lote.loteria_id || "desconhecida",
             dezenas: j.dezenas || [],
             score: j.score ?? null,
-            criado_em: j.criado_em,
-            estrategia: lote.estrategia || "manual",
+            criado_em: j.criado_em ?? lote.criado_em,
+            estrategia: lote.estrategia || lote.estrategia_id || "manual",
             nome: j.nome || null,
+            score_breakdown: j.score_breakdown || null,
           })),
         }));
         setLotesSalvos(lotes);
@@ -212,7 +239,7 @@ export default function AnalisePage() {
     } finally {
       setCarregandoJogos(false);
     }
-  };
+  }
 
   const handleBuscarJogo = async (id: string) => {
     const jogo = jogosDaLoteria.find(j => j.id === id);
@@ -361,6 +388,13 @@ export default function AnalisePage() {
               ))}
             </div>
 
+            <Input
+              placeholder="Buscar por nome ou autor..."
+              value={filtroNome}
+              onChange={(e) => setFiltroNome(e.target.value)}
+              className="h-8 text-xs"
+            />
+
             {carregandoJogos ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -374,10 +408,15 @@ export default function AnalisePage() {
               <div className="space-y-2 max-h-80 overflow-y-auto pr-1 rounded-lg">
                 {lotesFiltrados
                   .sort((a, b) => new Date(b.criado_em).getTime() - new Date(a.criado_em).getTime())
-                  .map(lote => (
+                  .map(lote => {
+                    const expandido = loteExpandidoId === lote.id;
+                    return (
                     <div key={lote.id} className="border rounded-lg overflow-hidden">
                       {/* Cabeçalho do lote */}
-                      <div className="p-3 bg-muted/30 border-b space-y-2">
+                      <div
+                        className="p-3 bg-muted/30 border-b space-y-2 cursor-pointer hover:bg-accent/40 transition-colors"
+                        onClick={() => setLoteExpandidoId(expandido ? null : lote.id)}
+                      >
                         <div className="flex items-center gap-2">
                           {lote.criador_avatar_url ? (
                             <img
@@ -402,77 +441,88 @@ export default function AnalisePage() {
                             <Layers className="h-3 w-3 mr-1" />
                             Lote
                           </Badge>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {expandido ? "▲" : "▼"}
+                          </span>
                         </div>
-                        {lote.jogos.length > 0 && (
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); analisarUm(lote.jogos[0]); }}
-                              className="flex-1 min-w-0 px-3 py-2 rounded-md text-xs font-semibold bg-muted text-muted-foreground hover:bg-accent transition-colors whitespace-nowrap"
-                            >
-                              Analisar 1º jogo
-                            </button>
-                            <button
-                              type="button"
-                              disabled={analisandoLote}
-                              onClick={(e) => { e.stopPropagation(); analisarLote(lote); }}
-                              className="flex-1 min-w-0 px-3 py-2 rounded-md text-xs font-semibold bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-50 whitespace-nowrap"
-                            >
-                              {analisandoLote ? "Analisando..." : "Analisar Lote Todo"}
-                            </button>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); analisarUm(lote.jogos[0]); }}
+                            className="flex-1 min-w-0 px-3 py-2 rounded-md text-xs font-semibold bg-muted text-muted-foreground hover:bg-accent transition-colors whitespace-nowrap"
+                          >
+                            Analisar 1º jogo
+                          </button>
+                          <button
+                            type="button"
+                            disabled={analisandoLote}
+                            onClick={(e) => { e.stopPropagation(); analisarLote(lote); }}
+                            className="flex-1 min-w-0 px-3 py-2 rounded-md text-xs font-semibold bg-primary/15 text-primary hover:bg-primary/25 transition-colors disabled:opacity-50 whitespace-nowrap"
+                          >
+                            {analisandoLote ? "Analisando..." : "Analisar Lote Todo"}
+                          </button>
+                        </div>
                       </div>
                       {/* Jogos do lote */}
-                      <div className="divide-y">
-                        {lote.jogos.map(j => (
-                          <button
-                            key={j.id}
-                            type="button"
-                            onClick={() => { setJogoSalvoSelecionado(j.id); handleBuscarJogo(j.id); }}
-                            className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors cursor-pointer ${
-                              jogoSalvoSelecionado === j.id
-                                ? "bg-primary/10"
-                                : "hover:bg-accent/50"
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              {j.score !== null && (
-                                <Badge variant={j.score >= 80 ? "default" : "secondary"} className="text-xs shrink-0 min-w-[2.5rem] justify-center">
-                                  {j.score}
-                                </Badge>
-                              )}
-                              <div className="min-w-0 flex-1 overflow-x-auto flex gap-1 items-center py-0.5">
-                                {j.dezenas.map(d => (
-                                  <span key={d} className="inline-flex items-center justify-center h-7 min-w-[1.75rem] rounded-full bg-muted text-foreground text-xs font-bold tabular-nums shrink-0">
-                                    {String(d).padStart(2, "0")}
+                      {expandido && (
+                        <div className="divide-y">
+                          {lote.jogos.map(j => (
+                            <button
+                              key={j.id}
+                              type="button"
+                              onClick={() => { setJogoSalvoSelecionado(j.id); handleBuscarJogo(j.id); }}
+                              className={`w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left transition-colors cursor-pointer ${
+                                jogoSalvoSelecionado === j.id
+                                  ? "bg-primary/10"
+                                  : "hover:bg-accent/50"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                {j.score_breakdown?.camuflagem && (
+                                  <span
+                                    title="Jogo camuflado"
+                                    className="inline-flex items-center justify-center h-6 w-6 rounded-full border border-dashed border-amber-400/60 text-amber-500 text-xs shrink-0"
+                                  >
+                                    ✦
                                   </span>
-                                ))}
+                                )}
+                                {j.score !== null && (
+                                  <Badge variant={j.score >= 80 ? "default" : "secondary"} className="text-xs shrink-0 min-w-[2.5rem] justify-center">
+                                    {j.score}
+                                  </Badge>
+                                )}
+                                <div className="min-w-0 flex-1 overflow-x-auto flex gap-1 items-center py-0.5">
+                                  {j.dezenas.map(d => (
+                                    <span key={d} className="inline-flex items-center justify-center h-7 min-w-[1.75rem] rounded-full bg-muted text-foreground text-xs font-bold tabular-nums shrink-0">
+                                      {String(d).padStart(2, "0")}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <span
-                                role="button"
-                                tabIndex={0}
-                                onClick={(e) => { e.stopPropagation(); setJogoSalvoSelecionado(j.id); analisarUm(j); }}
-                                className="p-2 rounded-md hover:bg-primary/10 text-primary"
-                                title="Analisar este jogo"
-                              >
-                                <BarChart3 className="h-4 w-4" />
-                              </span>
-                              <span
-                                role="button"
-                                tabIndex={0}
-                                onClick={(e) => { e.stopPropagation(); setEditandoJogo(j.id); setNomeEdicao(j.nome || ""); }}
-                                className="p-2 rounded-md hover:bg-muted"
-                                title="Renomear"
-                              >
-                                <PenLine className="h-4 w-4 text-muted-foreground" />
-                              </span>
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => { e.stopPropagation(); setJogoSalvoSelecionado(j.id); analisarUm(j); }}
+                                  className="p-2 rounded-md hover:bg-primary/10 text-primary"
+                                  title="Analisar este jogo"
+                                >
+                                  <BarChart3 className="h-4 w-4" />
+                                </span>
+                                <span
+                                  role="button"
+                                  tabIndex={0}
+                                  onClick={(e) => { e.stopPropagation(); setEditandoJogo(j.id); setNomeEdicao(j.nome || ""); }}
+                                  className="p-2 rounded-md hover:bg-muted"
+                                  title="Renomear"
+                                >
+                                  <PenLine className="h-4 w-4 text-muted-foreground" />
+                                </span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
                       {/* Renomear inline */}
                       {editandoJogo && lote.jogos.some(j => j.id === editandoJogo) && (
                         <div className="flex items-center gap-2 p-2 border-t bg-background/50" onClick={(e) => e.stopPropagation()}>
@@ -492,7 +542,8 @@ export default function AnalisePage() {
                         </div>
                       )}
                     </div>
-                  ))}
+                    );
+                  })}
               </div>
             )}
           </div>
@@ -610,7 +661,7 @@ export default function AnalisePage() {
                   </Button>
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  Ao salvar, o jogo aparecerá na lista "Jogos Salvos" com a data da geração.
+                  Ao salvar, o jogo aparecerá na lista &quot;Jogos Salvos&quot; com a data da geração.
                 </p>
               </div>
             </>

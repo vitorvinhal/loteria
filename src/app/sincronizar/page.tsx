@@ -76,6 +76,7 @@ export default function SincronizarPage() {
 
   useEffect(() => {
     carregarStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const extrairValorAcumulado = (data: Record<string, unknown>): number => {
@@ -100,7 +101,7 @@ export default function SincronizarPage() {
     );
   };
 
-  const carregarStatus = async () => {
+  async function carregarStatus() {
     const novosStatuses = await Promise.all(
       syncStatuses.map(async (status) => {
         try {
@@ -126,7 +127,7 @@ export default function SincronizarPage() {
       })
     );
     setSyncStatuses(novosStatuses);
-  };
+  }
 
   const sincronizarLoteria = async (slug: string) => {
     setSyncStatuses((prev) =>

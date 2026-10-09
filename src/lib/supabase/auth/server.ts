@@ -35,6 +35,7 @@ export async function getSession() {
 }
 
 export async function getUser() {
-  const session = await getSession();
-  return session?.user ?? null;
+  const supabase = await getSupabaseWithAuth();
+  const { data: { user } } = await supabase.auth.getUser();
+  return user ?? null;
 }

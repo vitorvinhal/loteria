@@ -23,6 +23,10 @@ CREATE TABLE loterias (
   preco_aposta_base NUMERIC(10,2) NOT NULL,
   regras_vitoria JSONB NOT NULL DEFAULT '[]',
   ativo BOOLEAN NOT NULL DEFAULT true,
+  mecanica TEXT NOT NULL DEFAULT 'conjunto',
+  qtd_sorteada INTEGER,
+  componentes_extras JSONB NOT NULL DEFAULT '[]',
+  colunas JSONB,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -42,6 +46,7 @@ CREATE TABLE concursos (
   data_proximo_concurso TEXT NOT NULL DEFAULT '',
   local_sorteio TEXT NOT NULL DEFAULT '',
   premiacoes JSONB NOT NULL DEFAULT '[]',
+  metadados JSONB NOT NULL DEFAULT '{}',
   raw_response JSONB,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -94,6 +99,7 @@ CREATE TABLE jogos_gerados (
   estrategia_id TEXT REFERENCES estrategias(id),
   score NUMERIC(5,2) NOT NULL DEFAULT 0,
   score_breakdown JSONB NOT NULL DEFAULT '{}',
+  metadados JSONB NOT NULL DEFAULT '{}',
   origem TEXT NOT NULL CHECK (origem IN ('algoritmo', 'manual', 'ia_hibrida')),
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -206,16 +212,16 @@ CREATE POLICY "Usuarios criam proprios boloes" ON boloes
 -- =====================================================
 -- Dados iniciais: Loterias
 -- =====================================================
-INSERT INTO loterias (id, slug, nome, universo_min, universo_max, qtd_dezenas_min, qtd_dezenas_max, qtd_dezenas_padrao, dias_sorteio, horario_sorteio, preco_aposta_base, regras_vitoria, ativo) VALUES
-('lotofacil', 'lotofacil', 'Lotofácil', 1, 25, 15, 20, 15, '["domingo"]', '11:00', 3.00, '[{"acertos_min":11,"acertos_max":11,"descricao":"11 acertos"},{"acertos_min":12,"acertos_max":12,"descricao":"12 acertos"},{"acertos_min":13,"acertos_max":13,"descricao":"13 acertos"},{"acertos_min":14,"acertos_max":14,"descricao":"14 acertos"},{"acertos_min":15,"acertos_max":15,"descricao":"15 acertos - Prêmio máximo"}]', true),
-('lotomania', 'lotomania', 'Lotomania', 0, 99, 50, 50, 50, '["terca","sexta"]', '20:00', 3.50, '[{"acertos_min":0,"acertos_max":0,"descricao":"0 acertos"},{"acertos_min":15,"acertos_max":15,"descricao":"15 acertos"},{"acertos_min":16,"acertos_max":16,"descricao":"16 acertos"},{"acertos_min":17,"acertos_max":17,"descricao":"17 acertos"},{"acertos_min":18,"acertos_max":18,"descricao":"18 acertos"},{"acertos_min":19,"acertos_max":19,"descricao":"19 acertos"},{"acertos_min":20,"acertos_max":20,"descricao":"20 acertos - Prêmio máximo"}]', true),
-('megasena', 'megasena', 'Mega-Sena', 1, 60, 6, 15, 6, '["domingo"]', '11:00', 5.00, '[{"acertos_min":4,"acertos_max":4,"descricao":"Quadra"},{"acertos_min":5,"acertos_max":5,"descricao":"Quina"},{"acertos_min":6,"acertos_max":6,"descricao":"Sena - Prêmio máximo"}]', true),
-('quina', 'quina', 'Quina', 1, 80, 5, 15, 5, '["domingo"]', '11:00', 2.50, '[{"acertos_min":2,"acertos_max":2,"descricao":"2 acertos"},{"acertos_min":3,"acertos_max":3,"descricao":"3 acertos"},{"acertos_min":4,"acertos_max":4,"descricao":"4 acertos"},{"acertos_min":5,"acertos_max":5,"descricao":"5 acertos - Prêmio máximo"}]', true),
-('duplasena', 'duplasena', 'Dupla Sena', 1, 50, 6, 15, 6, '["terca","quinta","sabado"]', '20:00', 2.50, '[{"acertos_min":3,"acertos_max":6,"descricao":"3 a 6 acertos no 1º sorteio"},{"acertos_min":3,"acertos_max":6,"descricao":"3 a 6 acertos no 2º sorteio"}]', true),
-('timemania', 'timemania', 'Timemania', 1, 80, 10, 10, 10, '["domingo"]', '11:00', 4.50, '[{"acertos_min":3,"acertos_max":3,"descricao":"3 acertos"},{"acertos_min":4,"acertos_max":4,"descricao":"4 acertos"},{"acertos_min":5,"acertos_max":5,"descricao":"5 acertos"},{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos"},{"acertos_min":7,"acertos_max":7,"descricao":"7 acertos - Time do Coração"}]', true),
-('diadesorte', 'diadesorte', 'Dia de Sorte', 1, 31, 7, 15, 7, '["domingo"]', '11:00', 3.50, '[{"acertos_min":4,"acertos_max":4,"descricao":"4 acertos + Mês da Sorte"},{"acertos_min":5,"acertos_max":5,"descricao":"5 acertos + Mês da Sorte"},{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos + Mês da Sorte"},{"acertos_min":7,"acertos_max":7,"descricao":"7 acertos + Mês da Sorte"}]', true),
-('maismilionaria', 'maismilionaria', '+Milionária', 1, 50, 6, 6, 6, '["domingo"]', '11:00', 6.00, '[{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos + 2 Trevos"},{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos + 1 Trevo"},{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos + 0 Trevos"}]', true),
-('supersete', 'supersete', 'Super Sete', 0, 9, 7, 7, 7, '["sexta"]', '20:00', 2.50, '[{"acertos_min":3,"acertos_max":3,"descricao":"3 colunas certas"},{"acertos_min":4,"acertos_max":4,"descricao":"4 colunas certas"},{"acertos_min":5,"acertos_max":5,"descricao":"5 colunas certas"},{"acertos_min":6,"acertos_max":6,"descricao":"6 colunas certas"},{"acertos_min":7,"acertos_max":7,"descricao":"7 colunas certas - Super Sete"}]', true);
+INSERT INTO loterias (id, slug, nome, universo_min, universo_max, qtd_dezenas_min, qtd_dezenas_max, qtd_dezenas_padrao, dias_sorteio, horario_sorteio, preco_aposta_base, regras_vitoria, ativo, mecanica, qtd_sorteada, componentes_extras, colunas) VALUES
+('lotofacil', 'lotofacil', 'Lotofácil', 1, 25, 15, 20, 15, '["segunda","terca","quarta","quinta","sexta","sabado"]', '20:00', 3.50, '[{"acertos_min":11,"acertos_max":11,"descricao":"11 acertos"},{"acertos_min":12,"acertos_max":12,"descricao":"12 acertos"},{"acertos_min":13,"acertos_max":13,"descricao":"13 acertos"},{"acertos_min":14,"acertos_max":14,"descricao":"14 acertos"},{"acertos_min":15,"acertos_max":15,"descricao":"15 acertos - Prêmio máximo"}]', true, 'conjunto', 15, '[]', NULL),
+('lotomania', 'lotomania', 'Lotomania', 0, 99, 50, 50, 50, '["segunda","quarta","sexta"]', '20:00', 3.00, '[{"acertos_min":0,"acertos_max":0,"descricao":"0 acertos"},{"acertos_min":15,"acertos_max":15,"descricao":"15 acertos"},{"acertos_min":16,"acertos_max":16,"descricao":"16 acertos"},{"acertos_min":17,"acertos_max":17,"descricao":"17 acertos"},{"acertos_min":18,"acertos_max":18,"descricao":"18 acertos"},{"acertos_min":19,"acertos_max":19,"descricao":"19 acertos"},{"acertos_min":20,"acertos_max":20,"descricao":"20 acertos - Prêmio máximo"}]', true, 'conjunto', 20, '[]', NULL),
+('megasena', 'megasena', 'Mega-Sena', 1, 60, 6, 20, 6, '["terca","quinta","domingo"]', '20:00', 6.00, '[{"acertos_min":4,"acertos_max":4,"descricao":"Quadra"},{"acertos_min":5,"acertos_max":5,"descricao":"Quina"},{"acertos_min":6,"acertos_max":6,"descricao":"Sena - Prêmio máximo"}]', true, 'conjunto', 6, '[]', NULL),
+('quina', 'quina', 'Quina', 1, 80, 5, 15, 5, '["segunda","terca","quarta","quinta","sexta","domingo"]', '20:00', 3.00, '[{"acertos_min":2,"acertos_max":2,"descricao":"2 acertos"},{"acertos_min":3,"acertos_max":3,"descricao":"3 acertos"},{"acertos_min":4,"acertos_max":4,"descricao":"4 acertos"},{"acertos_min":5,"acertos_max":5,"descricao":"5 acertos - Prêmio máximo"}]', true, 'conjunto', 5, '[]', NULL),
+('duplasena', 'duplasena', 'Dupla Sena', 1, 50, 6, 15, 6, '["segunda","quarta","sexta"]', '20:00', 3.00, '[{"acertos_min":3,"acertos_max":6,"descricao":"3 a 6 acertos no 1º sorteio"},{"acertos_min":3,"acertos_max":6,"descricao":"3 a 6 acertos no 2º sorteio"}]', true, 'conjunto', 6, '[]', NULL),
+('timemania', 'timemania', 'Timemania', 1, 80, 10, 10, 10, '["terca","quinta","domingo"]', '20:00', 3.50, '[{"acertos_min":3,"acertos_max":3,"descricao":"3 acertos"},{"acertos_min":4,"acertos_max":4,"descricao":"4 acertos"},{"acertos_min":5,"acertos_max":5,"descricao":"5 acertos"},{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos"},{"acertos_min":7,"acertos_max":7,"descricao":"7 acertos - Prêmio máximo"}]', true, 'conjunto', 7, '[{"tipo":"time","nome":"Time do Coração","universo_min":1,"universo_max":80,"qtd_min":1,"qtd_max":1,"obrigatorio":true}]', NULL),
+('diadesorte', 'diadesorte', 'Dia de Sorte', 1, 31, 7, 15, 7, '["segunda","terca","quarta","quinta","sexta","domingo"]', '20:00', 2.50, '[{"acertos_min":4,"acertos_max":4,"descricao":"4 acertos + Mês da Sorte"},{"acertos_min":5,"acertos_max":5,"descricao":"5 acertos + Mês da Sorte"},{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos + Mês da Sorte"},{"acertos_min":7,"acertos_max":7,"descricao":"7 acertos + Mês da Sorte"}]', true, 'conjunto', 7, '[{"tipo":"mes","nome":"Mês da Sorte","universo_min":1,"universo_max":12,"qtd_min":1,"qtd_max":1,"obrigatorio":true}]', NULL),
+('maismilionaria', 'maismilionaria', '+Milionária', 1, 50, 6, 12, 6, '["quarta","domingo"]', '20:00', 6.00, '[{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos + 2 trevos"},{"acertos_min":6,"acertos_max":6,"descricao":"6 acertos + 1/0 trevo"},{"acertos_min":5,"acertos_max":5,"descricao":"5 acertos + 2 trevos"},{"acertos_min":5,"acertos_max":5,"descricao":"5 acertos + 1/0 trevo"},{"acertos_min":4,"acertos_max":4,"descricao":"4 acertos + 2 trevos"},{"acertos_min":4,"acertos_max":4,"descricao":"4 acertos + 1/0 trevo"},{"acertos_min":3,"acertos_max":3,"descricao":"3 acertos + 2 trevos"},{"acertos_min":3,"acertos_max":3,"descricao":"3 acertos + 1 trevo"},{"acertos_min":2,"acertos_max":2,"descricao":"2 acertos + 2 trevos"},{"acertos_min":2,"acertos_max":2,"descricao":"2 acertos + 1 trevo"}]', true, 'conjunto', 6, '[{"tipo":"trevo","nome":"Trevos","universo_min":1,"universo_max":6,"qtd_min":2,"qtd_max":6,"obrigatorio":true}]', NULL),
+('supersete', 'supersete', 'Super Sete', 0, 9, 7, 21, 7, '["segunda","quarta","sexta"]', '21:00', 3.00, '[{"acertos_min":3,"acertos_max":3,"descricao":"3 colunas certas"},{"acertos_min":4,"acertos_max":4,"descricao":"4 colunas certas"},{"acertos_min":5,"acertos_max":5,"descricao":"5 colunas certas"},{"acertos_min":6,"acertos_max":6,"descricao":"6 colunas certas"},{"acertos_min":7,"acertos_max":7,"descricao":"7 colunas certas - Super Sete"}]', true, 'posicional', 7, '[]', '{"total_colunas":7,"universo_min":0,"universo_max":9,"min_total":7,"max_total":21,"faixas_por_coluna":[{"total_min":7,"total_max":7,"min_coluna":1,"max_coluna":1},{"total_min":8,"total_max":14,"min_coluna":1,"max_coluna":2},{"total_min":15,"total_max":21,"min_coluna":2,"max_coluna":3}]}');
 
 -- =====================================================
 -- Dados iniciais: Estratégias
