@@ -36,6 +36,7 @@ import {
   Sparkles,
   Trophy,
   Wrench,
+  Menu,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -89,28 +90,6 @@ const CORES_STATUS: Record<string, string> = {
   rejeitado: "bg-red-500/15 text-red-600 border-red-500/30",
 };
 
-function AvatarHumano({ nome, url, size = 28 }: { nome: string; url?: string | null; size?: number }) {
-  if (url && url.startsWith("data:image/")) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={url} alt={nome} width={size} height={size} className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />;
-  }
-  const iniciais = nome
-    .split(" ")
-    .map((p) => p[0])
-    .filter(Boolean)
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  return (
-    <span
-      className="rounded-full bg-indigo-500/20 text-indigo-600 font-bold flex items-center justify-center shrink-0"
-      style={{ width: size, height: size, fontSize: size * 0.4 }}
-    >
-      {iniciais || "?"}
-    </span>
-  );
-}
-
 export function AssistantWidget() {
   const { user, isLoading, avatarUrl } = useAuth();
   const [modo, setModo] = useState<Modo>("fechado");
@@ -130,6 +109,7 @@ export function AssistantWidget() {
   const [palpiteLoteria, setPalpiteLoteria] = useState("megasena");
   const [palpiteDezenas, setPalpiteDezenas] = useState("");
   const [enviandoPalpite, setEnviandoPalpite] = useState(false);
+  const [historicoMobile, setHistoricoMobile] = useState(false);
 
   const msgsRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -366,40 +346,36 @@ export function AssistantWidget() {
     iniciar((final) => setTexto((t) => (t ? `${t} ${final}` : final)));
   };
 
-  const chatTitulo = chats.find((c) => c.id === chatAtivo)?.title ?? "Novo chat";
-
   const listaMensagens = (
-    <div ref={msgsRef} className="flex-1 overflow-y-auto space-y-3 p-3">
+    <div ref={msgsRef} className="flex-1 overflow-y-auto px-3 sm:px-4 py-4 space-y-4">
       {carregandoChat && (
         <div className="flex items-center justify-center py-6 text-muted-foreground text-sm gap-2">
           <Loader2 className="h-4 w-4 animate-spin" /> Carregando conversa...
         </div>
       )}
       {!carregandoChat && mensagens.length === 0 && (
-        <div className="text-center py-8 text-muted-foreground text-sm space-y-2">
-          <Sparkles className="h-8 w-8 mx-auto text-fuchsia-500 opacity-60" />
-          <p>Olá! Sou a <strong>11</strong>, assistente do site.</p>
-          <p className="text-xs">Pergunte sobre gerador de jogos, estrégias ou deixe um feedback!</p>
+        <div className="text-center py-12 text-muted-foreground space-y-3">
+          <Avatar11 size={48} className="mx-auto rounded-full" />
+          <p className="text-base font-medium">Olá! Sou a <strong>11</strong>.</p>
+          <p className="text-sm max-w-xs mx-auto">Pergunte sobre gerador de jogos, estatísticas ou deixe um feedback.</p>
         </div>
       )}
-      {mensagens.map((m) => {
+      {mensagens.map((m, idx) => {
         const da11 = m.user_name === "11" && !m.user_id;
+        const anterior = mensagens[idx - 1];
+        const mesmoAutor = anterior && anterior.user_name === m.user_name && anterior.user_id === m.user_id;
+        const mostrarAvatar = da11 && !mesmoAutor;
         return (
-          <div key={m.id} className={`flex gap-2 ${da11 ? "" : "flex-row-reverse"}`}>
-            {da11 ? (
-              <Avatar11 size={28} className="shrink-0 rounded-full" />
-            ) : (
-              <AvatarHumano nome={m.user_name} url={m.user_avatar} />
-            )}
-            <div className={`max-w-[80%] space-y-1 ${da11 ? "" : "items-end flex flex-col"}`}>
-              <span className="text-[10px] text-muted-foreground px-1">
-                {da11 ? "11" : m.user_name}
-              </span>
+          <div key={m.id} className={`flex gap-2.5 ${da11 ? "" : "flex-row-reverse"}`}>
+            <div className="w-7 shrink-0">
+              {mostrarAvatar && <Avatar11 size={28} className="rounded-full" />}
+            </div>
+            <div className={`max-w-[85%] sm:max-w-[75%] space-y-1 ${da11 ? "" : "items-end flex flex-col"}`}>
               <div
-                className={`rounded-xl px-3 py-2 text-sm whitespace-pre-wrap break-words ${
+                className={`rounded-2xl px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words ${
                   da11
-                    ? "bg-fuchsia-500/10 border border-fuchsia-500/20 text-foreground"
-                    : "bg-primary/10 border border-primary/20"
+                    ? "bg-muted/60 text-foreground"
+                    : "bg-primary text-primary-foreground"
                 }`}
               >
                 {m.content}
@@ -431,14 +407,13 @@ export function AssistantWidget() {
                   type="button"
                   onClick={() => void falar(m.id, m.content)}
                   disabled={audioCarregando === m.id}
-                  className="inline-flex items-center gap-1 text-[10px] text-muted-foreground hover:text-fuchsia-600 transition-colors cursor-pointer px-1"
+                  className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors cursor-pointer"
                 >
                   {audioCarregando === m.id ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : (
                     <Volume2 className="h-3 w-3" />
                   )}
-                  Ouvir
                 </button>
               )}
             </div>
@@ -446,20 +421,26 @@ export function AssistantWidget() {
         );
       })}
       {enviando && (
-        <div className="flex gap-2 items-center text-sm text-muted-foreground">
-          <Avatar11 size={28} className="shrink-0 rounded-full" />
-          <span className="flex items-center gap-2 rounded-xl bg-fuchsia-500/10 border border-fuchsia-500/20 px-3 py-2">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" /> 11 está pensando...
-          </span>
+        <div className="flex gap-2.5">
+          <div className="w-7 shrink-0">
+            <Avatar11 size={28} className="rounded-full" />
+          </div>
+          <div className="rounded-2xl bg-muted/60 px-4 py-3 flex items-center gap-2">
+            <span className="flex gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:0ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:150ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/40 animate-bounce [animation-delay:300ms]" />
+            </span>
+          </div>
         </div>
       )}
     </div>
   );
 
   const barraEntrada = (
-    <div className="border-t p-2 space-y-2">
+    <div className="border-t p-2 sm:p-3">
       {anexos.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 mb-2">
           {anexos.map((a, i) => (
             <Badge key={i} variant="secondary" className="text-[10px] gap-1">
               {a.nome}
@@ -474,7 +455,7 @@ export function AssistantWidget() {
           ))}
         </div>
       )}
-      <div className="flex items-end gap-1.5">
+      <div className="flex items-end gap-1.5 bg-muted/40 rounded-2xl border border-border/50 focus-within:border-border px-2 py-1.5">
         <input
           ref={fileRef}
           type="file"
@@ -491,7 +472,7 @@ export function AssistantWidget() {
           type="button"
           variant="ghost"
           size="icon"
-          className="h-9 w-9 shrink-0"
+          className="h-8 w-8 shrink-0 text-muted-foreground"
           onClick={() => fileRef.current?.click()}
           disabled={enviandoAnexo}
           title="Anexar arquivo ou imagem"
@@ -509,14 +490,14 @@ export function AssistantWidget() {
           }}
           placeholder={ouvindo ? "Ouvindo..." : "Fale ou escreva com a 11..."}
           rows={1}
-          className="min-h-[38px] max-h-28 resize-none text-sm"
+          className="min-h-[36px] max-h-28 resize-none text-sm bg-transparent border-0 shadow-none focus-visible:ring-0 px-1 py-1"
         />
         {suporta && (
           <Button
             type="button"
             variant="ghost"
             size="icon"
-            className={`h-9 w-9 shrink-0 ${ouvindo ? "text-red-500 animate-pulse" : ""}`}
+            className={`h-8 w-8 shrink-0 ${ouvindo ? "text-red-500 animate-pulse" : "text-muted-foreground"}`}
             onClick={onMic}
             title={ouvindo ? "Parar microfone" : "Falar com microfone"}
           >
@@ -526,11 +507,11 @@ export function AssistantWidget() {
         <Button
           type="button"
           size="icon"
-          className="h-9 w-9 shrink-0 bg-fuchsia-600 hover:bg-fuchsia-700 text-white"
+          className="h-8 w-8 shrink-0 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground"
           onClick={() => void enviarMensagem(texto, anexos)}
           disabled={enviando || (!texto.trim() && !anexos.length)}
         >
-          <Send className="h-4 w-4" />
+          {enviando ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </div>
     </div>
@@ -539,27 +520,27 @@ export function AssistantWidget() {
   if (modo === "expandido") {
     return (
       <Dialog open onOpenChange={(o) => { if (!o) setModo("compacto"); }}>
-        <DialogContent className="max-w-5xl w-[96vw] h-[92vh] p-0 gap-0 overflow-hidden">
+        <DialogContent showCloseButton={false} className="max-w-full sm:max-w-5xl w-full sm:w-[96vw] h-full sm:h-[92vh] p-0 gap-0 overflow-hidden rounded-none sm:rounded-lg">
           <DialogHeader className="sr-only">
             <DialogTitle>Assistente 11 — Workspace</DialogTitle>
             <DialogDescription>Chat colaborativo, central de melhorias e placar</DialogDescription>
           </DialogHeader>
-          <div className="flex h-full min-h-0">
-            <aside className="hidden md:flex w-64 border-r flex-col min-h-0 shrink-0">
+          <div className="flex h-full min-h-0 relative">
+            {historicoMobile && (
+              <div className="absolute inset-0 z-20 bg-background/80 backdrop-blur-sm md:hidden" onClick={() => setHistoricoMobile(false)} />
+            )}
+            <aside className={`${historicoMobile ? "flex absolute z-30 inset-y-0 left-0 w-72 shadow-2xl md:static md:shadow-none" : "hidden"} md:flex md:w-64 border-r flex-col min-h-0 shrink-0 bg-background`}>
               <div className="p-3 border-b flex items-center justify-between gap-2">
                 <span className="flex items-center gap-2 text-sm font-bold">
-                  <Avatar11 size={26} className="rounded-full" /> 11
+                  <Avatar11 size={26} className="rounded-full" /> Histórico
                 </span>
-                <Button
+                <button
                   type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setModo("compacto")}
-                  title="Restaurar janela compacta"
+                  className="md:hidden rounded p-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                  onClick={() => setHistoricoMobile(false)}
                 >
-                  <Minimize2 className="h-4 w-4" />
-                </Button>
+                  <X className="h-4 w-4" />
+                </button>
               </div>
               <Button
                 type="button"
@@ -570,6 +551,7 @@ export function AssistantWidget() {
                   setChatAtivo(null);
                   setMensagens([]);
                   setAba("chat");
+                  setHistoricoMobile(false);
                 }}
               >
                 <Plus className="h-3.5 w-3.5" /> Novo chat
@@ -583,10 +565,11 @@ export function AssistantWidget() {
                       onClick={() => {
                         setChatAtivo(c.id);
                         setAba("chat");
+                        setHistoricoMobile(false);
                         void carregarMensagens(c.id);
                       }}
                       className={`w-full text-left rounded-lg px-2.5 py-2 text-sm transition-colors cursor-pointer ${
-                        chatAtivo === c.id ? "bg-fuchsia-500/15 text-foreground" : "hover:bg-accent"
+                        chatAtivo === c.id ? "bg-accent" : "hover:bg-accent/50"
                       }`}
                     >
                       <span className="block truncate font-medium">{c.title}</span>
@@ -603,22 +586,38 @@ export function AssistantWidget() {
             </aside>
             <div className="flex-1 min-w-0 flex flex-col min-h-0">
               <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)} className="flex-1 flex flex-col min-h-0">
-                <div className="border-b px-3 flex items-center justify-between gap-2">
-                  <TabsList className="my-2">
-                    <TabsTrigger value="chat" className="gap-1.5 text-xs">
-                      <MessageCircle className="h-3.5 w-3.5" /> Chat
-                    </TabsTrigger>
-                    <TabsTrigger value="dev" className="gap-1.5 text-xs">
-                      <Wrench className="h-3.5 w-3.5" /> Central do Dev
-                    </TabsTrigger>
-                    <TabsTrigger value="placar" className="gap-1.5 text-xs">
-                      <Trophy className="h-3.5 w-3.5" /> Placar
-                    </TabsTrigger>
-                  </TabsList>
-                  <span className="text-xs text-muted-foreground truncate max-w-[14rem]">{chatTitulo}</span>
-                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setModo("compacto")}>
-                    <Minimize2 className="h-4 w-4" />
-                  </Button>
+                <div className="border-b px-2 sm:px-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 md:hidden"
+                      onClick={() => setHistoricoMobile(true)}
+                      title="Histórico de chats"
+                    >
+                      <Menu className="h-4 w-4" />
+                    </Button>
+                    <TabsList className="my-2 h-9">
+                      <TabsTrigger value="chat" className="gap-1.5 text-xs px-2.5">
+                        <MessageCircle className="h-3.5 w-3.5" /> Chat
+                      </TabsTrigger>
+                      <TabsTrigger value="dev" className="gap-1.5 text-xs px-2.5">
+                        <Wrench className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Central do Dev</span><span className="sm:hidden">Dev</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="placar" className="gap-1.5 text-xs px-2.5">
+                        <Trophy className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Placar</span>
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setModo("compacto")} title="Minimizar">
+                      <Minimize2 className="h-4 w-4" />
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setModo("fechado")} title="Fechar">
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
                 <TabsContent value="chat" className="flex-1 min-h-0 mt-0 flex flex-col data-[state=active]:flex">
                   {listaMensagens}
@@ -750,18 +749,18 @@ export function AssistantWidget() {
 
   if (modo === "compacto") {
     return (
-      <div className="fixed bottom-0 left-0 right-0 z-[60] w-full h-[85vh] sm:bottom-4 sm:left-4 sm:right-auto sm:w-[22rem] sm:max-w-[calc(100vw-2rem)] sm:h-[26rem] sm:max-h-[calc(100vh-6rem)] rounded-t-2xl sm:rounded-xl border border-fuchsia-500/30 bg-card shadow-xl flex flex-col overflow-hidden">
-        <div className="flex items-center justify-between gap-2 border-b px-3 py-2 bg-fuchsia-500/5">
+      <div className="fixed bottom-0 left-0 right-0 z-[60] w-full h-[85vh] sm:bottom-4 sm:left-4 sm:right-auto sm:w-[22rem] sm:max-w-[calc(100vw-2rem)] sm:h-[26rem] sm:max-h-[calc(100vh-6rem)] rounded-t-2xl sm:rounded-xl border bg-card shadow-xl flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
           <span className="flex items-center gap-2 text-sm font-bold">
             <Avatar11 size={24} className="rounded-full" />
             11
           </span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               type="button"
               onClick={() => setModo("expandido")}
               title="Expandir"
-              className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
             >
               <Maximize2 className="h-3.5 w-3.5" />
             </button>
@@ -769,7 +768,7 @@ export function AssistantWidget() {
               type="button"
               onClick={() => setModo("fechado")}
               title="Fechar"
-              className="rounded p-1 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+              className="rounded p-1.5 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors cursor-pointer"
             >
               <X className="h-4 w-4" />
             </button>
@@ -785,7 +784,7 @@ export function AssistantWidget() {
     <button
       type="button"
       onClick={() => setModo("compacto")}
-      className="fixed bottom-4 left-4 z-[60] inline-flex items-center gap-2 rounded-full border border-fuchsia-500/40 bg-card px-4 py-2 text-sm font-semibold shadow-lg hover:bg-accent transition-colors cursor-pointer"
+      className="fixed bottom-4 left-4 z-[60] inline-flex items-center gap-2 rounded-full border bg-card px-4 py-2.5 text-sm font-semibold shadow-lg hover:bg-accent transition-colors cursor-pointer"
     >
       <Avatar11 size={22} className="rounded-full" />
       Falar com a 11
