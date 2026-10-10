@@ -39,6 +39,24 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "3.4.2",
+    date: "2026-10-10",
+    type: "patch",
+    tag: "Assistente 11 — microfone e live chat",
+    sections: [
+      {
+        title: "Correções",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Microfone: pede permissão do áudio antes de iniciar (resolve botão morto no celular)",
+          "Microfone sempre visível; se o navegador não suportar, avisa na hora",
+          "Live chat: atualização a cada 8s + ponto verde quando o Realtime conecta",
+        ],
+      },
+    ],
+  },
+  {
     version: "3.4.1",
     date: "2026-10-10",
     type: "patch",

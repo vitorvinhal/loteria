@@ -141,6 +141,7 @@ export function AssistantWidget() {
   const [palpiteLoteria, setPalpiteLoteria] = useState("megasena");
   const [palpiteDezenas, setPalpiteDezenas] = useState("");
   const [enviandoPalpite, setEnviandoPalpite] = useState(false);
+  const [liveOk, setLiveOk] = useState(false);
 
   const msgsRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -218,15 +219,22 @@ export function AssistantWidget() {
   }, []);
 
   useEffect(() => {
-    if (modo !== "fechado") void carregarChats();
-  }, [modo, carregarChats]);
-
-  useEffect(() => {
     if (modo === "expandido") {
       if (aba === "dev") void carregarMelhorias();
       if (aba === "placar") void carregarRanking();
     }
   }, [modo, aba, carregarMelhorias, carregarRanking]);
+
+  useEffect(() => {
+    if (modo === "fechado") return;
+    const atualizar = () => {
+      void carregarChats();
+      if (chatAtivo) void carregarMensagens(chatAtivo);
+    };
+    atualizar();
+    const poll = setInterval(atualizar, 8000);
+    return () => clearInterval(poll);
+  }, [modo, chatAtivo, carregarChats, carregarMensagens]);
 
   useEffect(() => {
     if (modo === "fechado" || !supabase || !chatAtivo) return;
@@ -245,15 +253,14 @@ export function AssistantWidget() {
           irParaFim();
         }
       )
-      .subscribe();
-    const poll = setInterval(() => {
-      void carregarMensagens(chatAtivo);
-    }, 12000);
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED") setLiveOk(true);
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setLiveOk(false);
+      });
     return () => {
       void supabase.removeChannel(canal);
-      clearInterval(poll);
     };
-  }, [modo, chatAtivo, irParaFim, carregarMensagens]);
+  }, [modo, chatAtivo, irParaFim]);
 
   const enviarMensagem = useCallback(
     async (conteudo: string, listaAnexos: Anexo[]) => {
@@ -408,7 +415,11 @@ export function AssistantWidget() {
       parar();
       return;
     }
-    iniciar((final) => setTexto((t) => (t ? `${t} ${final}` : final)));
+    if (!suporta) {
+      toast.error("Seu navegador não suporta ditado por voz. Use Chrome ou Edge.");
+      return;
+    }
+    void iniciar((final) => setTexto((t) => (t ? `${t} ${final}` : final)));
   };
 
   const listaMensagens = (
@@ -569,18 +580,16 @@ export function AssistantWidget() {
           rows={1}
           className="min-h-[36px] max-h-28 resize-none text-sm bg-transparent border-0 shadow-none focus-visible:ring-0 px-1 py-1"
         />
-        {suporta && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            className={`h-8 w-8 shrink-0 ${ouvindo ? "text-red-500 animate-pulse" : "text-muted-foreground"}`}
-            onClick={onMic}
-            title={ouvindo ? "Parar microfone" : "Falar com microfone"}
-          >
-            {ouvindo ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-          </Button>
-        )}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className={`h-8 w-8 shrink-0 ${ouvindo ? "text-red-500 animate-pulse" : "text-muted-foreground"}`}
+          onClick={onMic}
+          title={ouvindo ? "Parar microfone" : "Falar com microfone"}
+        >
+          {ouvindo ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+        </Button>
         <Button
           type="button"
           size="icon"
@@ -684,6 +693,9 @@ export function AssistantWidget() {
                     <TabsList className="my-2 h-9">
                       <TabsTrigger value="chat" className="gap-1.5 text-xs px-2.5">
                         <MessageCircle className="h-3.5 w-3.5" /> Chat
+                        {liveOk && (
+                          <span className="ml-0.5 inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" title="Ao vivo" />
+                        )}
                       </TabsTrigger>
                       <TabsTrigger value="dev" className="gap-1.5 text-xs px-2.5">
                         <Wrench className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Central do Dev</span>
