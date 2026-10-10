@@ -39,6 +39,50 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "3.4.0",
+    date: "2026-10-10",
+    type: "minor",
+    tag: "Assistente 11 — sala compartilhada estilo WhatsApp, markdown e live chat",
+    sections: [
+      {
+        title: "Sala compartilhada (estilo grupo WhatsApp)",
+        icon: <Users className="w-5 h-5" />,
+        color: "text-blue-500",
+        items: [
+          'Conversa única "Sala da 11" para todos os membros — sem lista de chats separados',
+          "Avatar e nome do remetente visíveis em cada mensagem (1ª do bloco, agrupada por autor)",
+          "Botão de envio estilo Gemini/ChatGPT e bolhas limpas sem poluição visual",
+        ],
+      },
+      {
+        title: "Respostas da 11 formatadas (Markdown)",
+        icon: <Bot className="w-5 h-5" />,
+        color: "text-fuchsia-500",
+        items: [
+          "Renderização de negrito, listas, títulos, código e links nas respostas da IA (estilo ChatGPT)",
+          "Usuários continuam com texto puro (preserva quebras de linha naturais)",
+        ],
+      },
+      {
+        title: "Geração de imagens com IA",
+        icon: <Palette className="w-5 h-5" />,
+        color: "text-amber-500",
+        items: [
+          'Peça "cria uma imagem de..." e a 11 gera a imagem na hora (FLUX.1-schnell via NVIDIA)',
+          "Imagem salva no Supabase Storage e exibida no chat como anexo",
+        ],
+      },
+      {
+        title: "Live chat em tempo real",
+        icon: <MessageCircle className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Supabase Realtime: mensagens novas de qualquer membro aparecem na hora, sem atualizar a página",
+        ],
+      },
+    ],
+  },
+  {
     version: "3.3.0",
     date: "2026-10-10",
     type: "minor",

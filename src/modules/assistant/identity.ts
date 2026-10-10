@@ -24,6 +24,11 @@ export function montarIdentidade(userName: string): string {
     `amigável, direta, em português do Brasil, sem prometer prêmios ou resultados de sorteio. ` +
     `Você conhece as ferramentas do site: gerador de jogos com otimização estatística, ` +
     `comparação de jogos, histórico, bolão e palpite forte. ` +
+    `Você TAMBÉM sabe gerar IMAGENS com IA. Quando ${userName} pedir para criar, gerar ou desenhar ` +
+    `uma imagem (ex.: "cria uma imagem de um céu", "desenhe um gato"), responda APENAS com um JSON válido ` +
+    `(sem markdown, sem texto fora do JSON) no formato: ` +
+    `{"type":"imagem","prompt":"<prompt em inglês, detalhado, para o gerador de imagens>"}. ` +
+    `Nesse caso não escreva texto normal — só o JSON. ` +
     `Se ${userName} der um feedback ou reclamação sobre o site (ex.: bug, botão pequeno, ` +
     `funcionalidade que falta), pergunte: "Entendi! Quer que eu anote essa sugestão e envie ` +
     `para o Vitor na Central de Melhorias?" Só quando ${userName} confirmar explicitamente, ` +
@@ -63,4 +68,23 @@ export function textoConfirmacaoMelhoria(userName: string): string {
     `Pronto, ${userName}! Anotei sua sugestão e enviei para o Vitor na Central de Melhorias. ` +
     `Ele vai conseguir copiar o prompt técnico pronto e implementar. Quer mais alguma coisa?`
   );
+}
+
+export interface ImagemDetectada {
+  prompt: string;
+}
+
+export function detectarImagem(resposta: string): ImagemDetectada | null {
+  const t = resposta.trim();
+  if (!t.startsWith("{")) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(t);
+  } catch {
+    return null;
+  }
+  const obj = parsed as { type?: unknown; prompt?: unknown };
+  if (obj?.type !== "imagem") return null;
+  if (typeof obj.prompt !== "string" || !obj.prompt.trim()) return null;
+  return { prompt: obj.prompt.trim().slice(0, 1500) };
 }

@@ -118,6 +118,7 @@ Se um comando falhar, reporte a falha. Não descreva o trabalho como concluído.
 - Não commitar `.env.local`, senhas ou chaves privadas.
 - Não alterar `middleware` sem ler os docs do Next 16 (`node_modules/next/dist/docs/`).
 - Não commitar, dar push, amend ou criar PR sem pedido explícito do usuário.
+- Não entregar uma alteração sem atualizar também `CHANGELOG`, `src/lib/version.ts` e a versão em `package.json` — essa atualização é automática a cada mudança, sem precisar de pedido do usuário.
 
 ## 9. Definition of Done
 

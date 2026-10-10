@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession, getSupabaseWithAuth } from "@/lib/supabase/auth/server";
 import type { AnexoChat } from "@/modules/assistant/assistant-chat";
+import { SALA_ID } from "@/modules/assistant/sala";
 
 export const dynamic = "force-dynamic";
 
-const HISTORICO_MAX = 60;
+const HISTORICO_MAX = 200;
 
 interface LinhaMensagem {
   id: string;
@@ -23,10 +24,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
     }
 
-    const chatId = req.nextUrl.searchParams.get("chat_id");
-    if (!chatId) {
-      return NextResponse.json({ error: "chat_id obrigatório" }, { status: 400 });
-    }
+    const chatId = req.nextUrl.searchParams.get("chat_id") || SALA_ID;
 
     const supabase = await getSupabaseWithAuth();
     const { data, error } = await supabase
