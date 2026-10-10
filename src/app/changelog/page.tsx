@@ -34,6 +34,44 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "3.2.0",
+    date: "2026-10-10",
+    type: "minor",
+    tag: "Palpite Forte da IA + contrato multi-provedor",
+    sections: [
+      {
+        title: "Palpite Forte da IA",
+        icon: <Target className="w-5 h-5" />,
+        color: "text-fuchsia-500",
+        items: [
+          "Card flutuante 'Palpite Forte da IA' nas telas de geração, recalculado por loteria",
+          "Palpite derivado das métricas do sistema: dezenas quentes + atrasadas, paridade e faixa de soma",
+          "Botão 'Usar no Gerador' pré-preenche o volante com o palpite sugerido",
+          "Suporte a mecânica posicional (Super Sete) e extras (Timemania, Dia de Sorte, +Milionária)",
+        ],
+      },
+      {
+        title: "IA multi-provedor",
+        icon: <Layers className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          'Contrato de resposta reforçado: campos "games", "score" e "analysis" em JSON estrito',
+          "Cards expansíveis por jogo com a nota e a análise técnica gerada pela IA",
+          "Copy atualizada: fallback automático entre Groq, NVIDIA, APInex e Agnes",
+        ],
+      },
+      {
+        title: "Segurança e dependências",
+        icon: <ShieldCheck className="w-5 h-5" />,
+        color: "text-purple-500",
+        items: [
+          "shadcn movido para devDependencies — 0 vulnerabilidades em dependências de produção",
+          "7 vulnerabilidades altas de produção eliminadas sem mudança de comportamento",
+        ],
+      },
+    ],
+  },
+  {
     version: "3.1.0",
     date: "2026-10-10",
     type: "minor",
