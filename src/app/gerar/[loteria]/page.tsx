@@ -34,15 +34,20 @@ import {
   Coins,
   Save,
   AlertTriangle,
+  ChevronDown,
 } from "lucide-react";
 import { LOTERIAS, getPreco, getOpcoesQtd } from "@/lib/loterias";
 import { getEstrategiasAtivas } from "@/modules/strategies";
 import { ShareGame } from "@/components/lottery/share-game";
+import { PalpiteCard } from "@/components/lottery/palpite-card";
 
 interface JogoGerado {
   dezenas: number[];
   score: number;
   breakdown: Record<string, unknown>;
+  analise_ia?: string;
+  extras?: Record<string, number[]>;
+  colunas?: number[][];
 }
 
 const ESTRATEGIA_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -136,6 +141,7 @@ export default function GerarPage() {
   const [salvandoParcial, setSalvandoParcial] = useState<Set<number>>(new Set());
   const [resultadoGeracao, setResultadoGeracao] = useState<{ totalGerados: number; totalSolicitado: number; maiorScore: number; relaxado: boolean } | null>(null);
   const [jogosExpandidos, setJogosExpandidos] = useState(true);
+  const [jogoExpandido, setJogoExpandido] = useState<number | null>(null);
   const [usarIA, setUsarIA] = useState(false);
   const [avisoIA, setAvisoIA] = useState<string | null>(null);
   const [fonteGeracao, setFonteGeracao] = useState<"ia" | "motor-local" | null>(null);
@@ -491,14 +497,14 @@ export default function GerarPage() {
                 </div>
               </div>
 
-              {/* IA (MiMo) toggle */}
+              {/* IA toggle */}
               <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
                 <div className="flex items-start gap-2 min-w-0">
                   <Brain className="h-4 w-4 mt-0.5 text-fuchsia-500 shrink-0" />
                   <div className="min-w-0">
-                    <span className="text-sm font-semibold block">Gerar com IA (MiMo)</span>
+                    <span className="text-sm font-semibold block">Otimizar e Validar Jogos com IA</span>
                     <span className="text-xs text-muted-foreground">
-                      Modelo MiMo V2.6 Flash · até 50 jogos por vez · validados pelo motor
+                      Groq · NVIDIA · APInex · Agnes (fallback automático) · até 50 jogos · validados pelo motor
                     </span>
                   </div>
                 </div>
@@ -581,7 +587,7 @@ export default function GerarPage() {
                   </div>
                   {fonteGeracao === "ia" ? (
                     <p className="text-xs text-emerald-600">
-                      Jogos propostos pela IA (MiMo) e validados um a um pelo motor oficial. O score mínimo não filtra a geração por IA — os scores são informativos.
+                      Jogos propostos pela IA (multi-provedor) e validados um a um pelo motor oficial. O score mínimo não filtra a geração por IA — os scores são informativos.
                     </p>
                   ) : resultadoGeracao.relaxado ? (
                     <p className="text-xs text-amber-600">
@@ -745,8 +751,52 @@ export default function GerarPage() {
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          title="Detalhes e análise"
+                          aria-expanded={jogoExpandido === index}
+                          onClick={() => setJogoExpandido(jogoExpandido === index ? null : index)}
+                          className={jogoExpandido === index ? "text-primary" : ""}
+                        >
+                          <ChevronDown
+                            className={`h-3.5 w-3.5 transition-transform ${jogoExpandido === index ? "rotate-180" : ""}`}
+                          />
+                        </Button>
                       </div>
                     </div>
+                    {jogoExpandido === index && (
+                      <div className="mt-3 space-y-2 border-t pt-3">
+                        {jogo.analise_ia ? (
+                          <div className="flex items-start gap-2 rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/5 p-2">
+                            <Sparkles className="h-3.5 w-3.5 text-fuchsia-500 mt-0.5 shrink-0" />
+                            <p className="text-xs leading-snug">
+                              <span className="font-semibold">Análise da IA: </span>
+                              {jogo.analise_ia}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            Gerado pelo motor local — sem análise textual da IA.
+                          </p>
+                        )}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                          {[
+                            ["Frequência", jogo.breakdown?.frequencia],
+                            ["Atraso", jogo.breakdown?.atraso],
+                            ["Par/Ímpar", jogo.breakdown?.par_impar],
+                            ["Soma", jogo.breakdown?.soma],
+                          ].map(([rotulo, valor]) => (
+                            <div key={String(rotulo)} className="rounded-md border p-2">
+                              <div className="text-[10px] text-muted-foreground">{String(rotulo)}</div>
+                              <div className="text-sm font-bold tabular-nums">
+                                {typeof valor === "number" ? Math.round(valor * 100) / 100 : "—"}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -777,6 +827,8 @@ export default function GerarPage() {
           </div>
         )}
       </div>
+
+      <PalpiteCard slug={slug} />
     </div>
   );
 }

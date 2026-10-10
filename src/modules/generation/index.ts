@@ -11,7 +11,7 @@ export {
   ErroChamadaIA,
   topFrequencias,
 } from "./ia";
-export type { MensagensIA, OpcoesPromptIA } from "./ia";
+export type { MensagensIA, OpcoesPromptIA, JogoSorteadoIA } from "./ia";
 export {
   PROVIDERS_IA,
   ORDEM_FALLBACK_IA,
@@ -30,3 +30,5 @@ export {
 export type { ProviderIA, InfoProviderIA, ConfigIA } from "./provider";
 export { salvarLoteGeracao } from "./lote";
 export type { JogoParaSalvar, SalvarLoteParams } from "./lote";
+export { gerarPalpiteForte } from "./palpite";
+export type { PalpiteForte, MetricaPalpite } from "./palpite";

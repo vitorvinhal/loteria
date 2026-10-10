@@ -57,6 +57,39 @@ export default function CriarJogoPage() {
     );
     setExtras({});
     setAnalise(null);
+
+    if (!l) return;
+    try {
+      const q = new URLSearchParams(window.location.search);
+      const qtdParam = Number(q.get("qtd"));
+      if (q.has("qtd") && Number.isInteger(qtdParam) && qtdParam > 0) setQtdDezenas(qtdParam);
+
+      const colunasParam = q.get("colunas");
+      const dezenasParam = q.get("dezenas");
+      if (l.colunas && colunasParam) {
+        const cols = colunasParam
+          .split(";")
+          .map((g) => g.split(",").map(Number).filter((x) => Number.isInteger(x)));
+        if (cols.length === l.colunas.total_colunas) setColunas(cols);
+      } else if (dezenasParam) {
+        const ds = dezenasParam.split(",").map(Number).filter((x) => Number.isInteger(x));
+        if (ds.length) setDezenas([...ds].sort((a, b) => a - b));
+      }
+
+      const extrasParam = q.get("extras");
+      if (extrasParam) {
+        const ex: Record<string, number[]> = {};
+        for (const par of extrasParam.split(";")) {
+          const [tipo, vals] = par.split(":");
+          if (!tipo || !vals) continue;
+          const nums = vals.split(",").map(Number).filter((x) => Number.isInteger(x));
+          if (nums.length) ex[tipo] = nums;
+        }
+        if (Object.keys(ex).length) setExtras(ex);
+      }
+    } catch (e) {
+      console.error("Parâmetros de pré-preenchimento inválidos:", e);
+    }
   }, [slug]);
 
   if (!loteria) {

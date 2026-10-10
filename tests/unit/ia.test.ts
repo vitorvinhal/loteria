@@ -140,3 +140,51 @@ describe("topFrequencias", () => {
     ]);
   });
 });
+
+describe("contrato games/score/analysis", () => {
+  const regraDe = (l: Loteria) => obterRegra(l);
+
+  it("o prompt exige o campo games com score e analysis", () => {
+    const { system } = montarMensagensIA(loteria("megasena"), 3);
+    expect(system).toContain("games");
+    expect(system).toContain("score");
+    expect(system).toContain("analysis");
+  });
+
+  it("aceita games com score e analysis e expõe score_ia/analise_ia", () => {
+    const l = loteria("megasena");
+    const r = validarJogosIA(
+      {
+        games: [
+          { dezenas: [1, 2, 3, 4, 5, 6], score: 88, analysis: "Foco em dezenas atrasadas." },
+        ],
+      },
+      l,
+      regraDe(l)
+    );
+    expect(r.validos).toHaveLength(1);
+    expect(r.validos[0].score_ia).toBe(88);
+    expect(r.validos[0].analise_ia).toBe("Foco em dezenas atrasadas.");
+  });
+
+  it("limita o score ao intervalo 0-100 e ignora analysis vazia", () => {
+    const l = loteria("megasena");
+    const r = validarJogosIA(
+      {
+        games: [
+          { dezenas: [10, 20, 30, 40, 50, 60], score: 250, analysis: "   " },
+        ],
+      },
+      l,
+      regraDe(l)
+    );
+    expect(r.validos[0].score_ia).toBe(100);
+    expect(r.validos[0].analise_ia).toBeUndefined();
+  });
+
+  it("continua aceitando o formato legado jogos", () => {
+    const l = loteria("megasena");
+    const r = validarJogosIA({ jogos: [{ dezenas: [2, 4, 6, 8, 10, 12] }] }, l, regraDe(l));
+    expect(r.validos).toHaveLength(1);
+  });
+});

@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
           breakdown: sc as unknown as Record<string, unknown>,
           extras: j.extras,
           colunas: j.colunas,
+          analise_ia: (j as { analise_ia?: string }).analise_ia,
+          score_ia: (j as { score_ia?: number }).score_ia,
         };
       })
       .sort((a, b) => b.score - a.score);

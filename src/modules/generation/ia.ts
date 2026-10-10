@@ -19,6 +19,11 @@ export interface MensagensIA {
   user: string;
 }
 
+export interface JogoSorteadoIA extends JogoSorteado {
+  score_ia?: number;
+  analise_ia?: string;
+}
+
 export interface OpcoesPromptIA {
   qtdDezenas?: number;
   estrategia?: { nome?: string; descricao_curta?: string };
@@ -44,7 +49,8 @@ export function montarMensagensIA(
   const system =
     'Você é um gerador de jogos da loteria brasileira. ' +
     'Responda SOMENTE com JSON válido, sem comentários nem markdown, ' +
-    'no formato {"jogos":[{"dezenas":[1,2,3]}, ...]}. ' +
+    'no formato {"games":[{"dezenas":[1,2,3],"score":<inteiro 0-100>,"analysis":"<1 frase curta em português>"}]}. ' +
+    'O campo score é sua nota de qualidade da combinação; analysis explica em uma frase o critério estatístico usado. ' +
     'Todos os jogos devem ser distintos e obedecer exatamente às regras informadas.';
 
   const qtd = opts.qtdDezenas ?? loteria.qtd_dezenas_padrao;
@@ -96,7 +102,7 @@ export function montarMensagensIA(
     linhas.push(`Dezenas mais frequentes nos últimos concursos: ${top}. Use como referência, não como regra.`);
   }
 
-  linhas.push(`Gere exatamente ${quantidade} jogos distintos, no formato JSON {"jogos":[...]} com ${quantidade} itens.`);
+  linhas.push(`Gere exatamente ${quantidade} jogos distintos, no campo "games" do JSON, com ${quantidade} itens.`);
 
   return { system, user: linhas.join('\n') };
 }
@@ -122,17 +128,18 @@ export function validarJogosIA(
     validar: (jogo: JogoSorteado, loteria: Loteria) => { valido: boolean };
     chave: (jogo: JogoSorteado) => string;
   }
-): { validos: JogoSorteado[]; descartados: number } {
-  const obj = parsed as { jogos?: unknown } | null;
-  if (!obj || !Array.isArray(obj.jogos)) return { validos: [], descartados: 0 };
+): { validos: JogoSorteadoIA[]; descartados: number } {
+  const obj = parsed as { games?: unknown; jogos?: unknown } | null;
+  const lista = obj?.games ?? obj?.jogos;
+  if (!obj || !Array.isArray(lista)) return { validos: [], descartados: 0 };
 
   const posicional = loteria.mecanica === 'posicional';
-  const validos: JogoSorteado[] = [];
+  const validos: JogoSorteadoIA[] = [];
   const vistos = new Set<string>();
   let descartados = 0;
 
-  for (const item of obj.jogos as unknown[]) {
-    const j = item as { dezenas?: unknown; extras?: unknown };
+  for (const item of lista as unknown[]) {
+    const j = item as { dezenas?: unknown; extras?: unknown; score?: unknown; analysis?: unknown };
     if (
       !j ||
       !Array.isArray(j.dezenas) ||
@@ -154,11 +161,18 @@ export function validarJogosIA(
       }
     }
 
-    const jogo: JogoSorteado = {
+    const jogo: JogoSorteadoIA = {
       dezenas,
       extras: Object.keys(extras).length ? extras : undefined,
       colunas: posicional ? dezenas.map((d) => [d]) : undefined,
     };
+
+    if (typeof j.score === 'number' && Number.isFinite(j.score)) {
+      jogo.score_ia = Math.max(0, Math.min(100, Math.round(j.score)));
+    }
+    if (typeof j.analysis === 'string' && j.analysis.trim()) {
+      jogo.analise_ia = j.analysis.trim().slice(0, 240);
+    }
 
     if (!regra.validar(jogo, loteria).valido) {
       descartados++;
