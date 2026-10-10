@@ -135,9 +135,25 @@ export async function POST(request: NextRequest) {
       jogo = montarJogo(dezenas, metadados);
     }
 
-    const validacao = obterRegra(loteria!).validar(jogo, loteria!);
-    if (!validacao.valido) {
+    const regra = obterRegra(loteria!);
+    const extrasFaltando = (loteria!.componentes_extras ?? []).filter(
+      (c) => c.obrigatorio && !(jogo.extras?.[c.tipo]?.length)
+    );
+    const validacao = regra.validar(jogo, loteria!);
+    // Erros de extras só são ignorados quando faltam extras (aposta antiga sem
+    // metadados); extra presente porém inválido é erro de verdade.
+    const errosNaoExtras = validacao.erros.filter((e) => !e.startsWith("Extra "));
+    if (errosNaoExtras.length > 0 || (validacao.erros.length > 0 && extrasFaltando.length === 0)) {
       return NextResponse.json({ error: validacao.erros.join("; ") }, { status: 400 });
+    }
+    const avisos: string[] = [];
+    if (extrasFaltando.length) {
+      avisos.push(
+        `Extras (${extrasFaltando.map((c) => c.tipo).join(", ")}) não conferidos: aposta salva no formato antigo, sem metadados.`
+      );
+    }
+    if (loteria!.mecanica === "posicional" && !jogo.colunas) {
+      avisos.push("Sem colunas salvas: conferência aproximada (1º dígito por posição).");
     }
 
     const { concurso } = await buscarResultado(loteria!);
@@ -157,6 +173,8 @@ export async function POST(request: NextRequest) {
       dezenas_sorteadas: concurso.dezenas_sorteadas,
       concurso_numero: concurso.numero_concurso,
       detalhes,
+      avisos: avisos.length ? avisos : undefined,
+      extras_conferidos: extrasFaltando.length === 0,
     };
 
     if (apostaSalva) {

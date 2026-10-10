@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "@/lib/db";
-import { getSession } from "@/lib/supabase/auth/server";
+import { getSupabaseWithAuth, getSession } from "@/lib/supabase/auth/server";
 
 export async function GET() {
   try {
@@ -9,7 +8,7 @@ export async function GET() {
       return NextResponse.json({ notificacoes: [] });
     }
 
-    const supabase = getSupabase();
+    const supabase = await getSupabaseWithAuth();
 
     const { data: notificacoes, error } = await supabase
       .from("notificacoes")

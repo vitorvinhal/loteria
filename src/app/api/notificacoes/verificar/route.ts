@@ -1,13 +1,24 @@
 import { NextResponse } from "next/server";
 import { verificarNovosResultados, notificarAcumulacao } from "@/lib/notifications";
+import { getSession } from "@/lib/supabase/auth/server";
 
 export async function POST() {
   try {
+    // RLS de notificacoes/apostas é por dono: a verificação roda apenas para
+    // o usuário logado (sem sessão não há o que verificar).
+    const session = await getSession();
+    if (!session?.user) {
+      return NextResponse.json(
+        { sucesso: false, erro: "Sessão necessária para verificar notificações" },
+        { status: 401 }
+      );
+    }
+
     console.log("[Notificacoes] Iniciando verificação...");
 
     const [resultado, acumulacao] = await Promise.allSettled([
-      verificarNovosResultados(),
-      notificarAcumulacao(),
+      verificarNovosResultados(session.user.id),
+      notificarAcumulacao(session.user.id),
     ]);
 
     const resumo = {

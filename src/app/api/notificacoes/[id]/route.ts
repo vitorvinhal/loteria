@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSupabase } from "@/lib/db";
-import { getSession } from "@/lib/supabase/auth/server";
+import { getSupabaseWithAuth, getSession } from "@/lib/supabase/auth/server";
 
 export async function PUT(
   request: NextRequest,
@@ -13,7 +12,7 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const supabase = getSupabase();
+    const supabase = await getSupabaseWithAuth();
 
     const { error } = await supabase
       .from("notificacoes")
@@ -44,7 +43,7 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    const supabase = getSupabase();
+    const supabase = await getSupabaseWithAuth();
 
     const { error } = await supabase
       .from("notificacoes")

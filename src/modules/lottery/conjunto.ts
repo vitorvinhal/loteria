@@ -73,6 +73,9 @@ export const regraConjunto: RegraLoteria = {
         if (comp.obrigatorio && (val.length < comp.qtd_min || val.length > comp.qtd_max)) {
           erros.push(`Extra ${comp.tipo} fora do intervalo ${comp.qtd_min}-${comp.qtd_max}`);
         }
+        if (val.length > 0 && val.some(v => v < comp.universo_min || v > comp.universo_max)) {
+          erros.push(`Extra ${comp.tipo} valor fora do universo ${comp.universo_min}-${comp.universo_max}`);
+        }
       }
     }
     return { valido: erros.length === 0, erros };

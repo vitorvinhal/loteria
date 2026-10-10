@@ -326,10 +326,15 @@ export default function ApostasPage() {
                           <TableCell className="whitespace-nowrap">{formatCurrency(aposta.valor_apostado)}</TableCell>
                           <TableCell>
                             {aposta.resultado ? (
-                              <Badge variant={aposta.resultado.ganhou ? "default" : "destructive"} className="flex items-center gap-1 text-xs">
-                                {aposta.resultado.ganhou ? <Trophy className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                                {aposta.resultado.ganhou ? "Ganhou" : "Perdeu"} ({aposta.resultado.acertos}/{aposta.resultado.total_dezenas})
-                              </Badge>
+                              <>
+                                <Badge variant={aposta.resultado.ganhou ? "default" : "destructive"} className="flex items-center gap-1 text-xs">
+                                  {aposta.resultado.ganhou ? <Trophy className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
+                                  {aposta.resultado.ganhou ? "Ganhou" : "Perdeu"} ({aposta.resultado.acertos}/{aposta.resultado.total_dezenas})
+                                </Badge>
+                                {aposta.resultado.avisos?.map((a) => (
+                                  <p key={a} className="text-[10px] text-amber-600 mt-1 max-w-[180px]">{a}</p>
+                                ))}
+                              </>
                             ) : (
                               <Button variant="outline" size="sm" onClick={() => handleVerificar(aposta)} disabled={verificandoId === aposta.id} className="text-xs">
                                 {verificandoId === aposta.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <Search className="h-3 w-3 mr-1" />}

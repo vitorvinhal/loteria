@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabase } from "@/lib/db";
-import { getSession } from "@/lib/supabase/auth/server";
+import { getSupabaseWithAuth, getSession } from "@/lib/supabase/auth/server";
 
 export async function PUT() {
   try {
@@ -9,7 +8,7 @@ export async function PUT() {
       return NextResponse.json({ error: "Não autenticado" }, { status: 401 });
     }
 
-    const supabase = getSupabase();
+    const supabase = await getSupabaseWithAuth();
 
     const { error } = await supabase
       .from("notificacoes")

@@ -1,4 +1,4 @@
-import { getSupabase } from '@/lib/db';
+import { getSupabaseWithAuth } from '@/lib/supabase/auth/server';
 import { getLoteriasAtivas } from '@/lib/loterias';
 
 export type TipoNotificacao = 'resultado' | 'score' | 'sistema';
@@ -18,7 +18,9 @@ export async function criarNotificacao({
   mensagem,
   dados,
 }: NotificacaoParams): Promise<void> {
-  const supabase = getSupabase();
+  // Cliente autenticado: RLS de notificacoes exige usuario_id = auth.uid(),
+  // então o lote só notifica o próprio usuário logado.
+  const supabase = await getSupabaseWithAuth();
 
   const { error } = await supabase.from('notificacoes').insert({
     usuario_id: usuarioId,
@@ -35,11 +37,11 @@ export async function criarNotificacao({
   }
 }
 
-export async function verificarNovosResultados(): Promise<{
+export async function verificarNovosResultados(usuarioId: string): Promise<{
   processadas: number;
   notificacoesCriadas: number;
 }> {
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithAuth();
   const loterias = getLoteriasAtivas();
   let notificacoesCriadas = 0;
 
@@ -57,7 +59,8 @@ export async function verificarNovosResultados(): Promise<{
     const { data: apostas, error: errorApostas } = await supabase
       .from('apostas')
       .select('id, usuario_id, dezenas')
-      .eq('loteria_id', loteria.id);
+      .eq('loteria_id', loteria.id)
+      .eq('usuario_id', usuarioId);
 
     if (errorApostas || !apostas?.length) continue;
 
@@ -96,11 +99,11 @@ export async function verificarNovosResultados(): Promise<{
   return { processadas: loterias.length, notificacoesCriadas };
 }
 
-export async function notificarAcumulacao(): Promise<{
+export async function notificarAcumulacao(usuarioId: string): Promise<{
   loteriasComAcumulo: number;
   notificacoesCriadas: number;
 }> {
-  const supabase = getSupabase();
+  const supabase = await getSupabaseWithAuth();
   const loterias = getLoteriasAtivas();
   let notificacoesCriadas = 0;
 
@@ -121,7 +124,8 @@ export async function notificarAcumulacao(): Promise<{
     const { data: usuarios } = await supabase
       .from('apostas')
       .select('usuario_id')
-      .eq('loteria_id', loteria.id);
+      .eq('loteria_id', loteria.id)
+      .eq('usuario_id', usuarioId);
 
     if (!usuarios?.length) continue;
 

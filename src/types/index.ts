@@ -83,6 +83,10 @@ export interface ResultadoAposta {
   dezenas_sorteadas: number[];
   concurso_numero: number;
   detalhes: string;
+  /** Avisos de dados antigos (sem metadados) — o que não pôde ser conferido. */
+  avisos?: string[];
+  /** false quando a aposta antiga não tinha os extras obrigatórios salvos. */
+  extras_conferidos?: boolean;
 }
 
 export interface Estrategia {

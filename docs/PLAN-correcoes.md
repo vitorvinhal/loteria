@@ -45,6 +45,6 @@ Legenda: `[ ]` planned · `[~]` in progress · `[x]` done · `[!]` blocked
 - [ ] Verificação de UI no navegador
 
 ## Bloqueios / decisões pendentes
-- Reativar middleware (Next 16/proxy): pendencente de leitura dos docs.
+- ~~Reativar middleware (Next 16/proxy)~~ — resolvido: docs lidos em nextjs.org (local `node_modules/next/dist/docs/` inexistente); `src/middleware.ts` → `src/proxy.ts` (stub no-op preservado, matcher `[]`).
 - Analytics por coluna para Super Sete: adiado (frequência por coluna).
 - Backfill de histórico antigo (preço/faixa mudam): tratamento não definido.

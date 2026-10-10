@@ -33,6 +33,7 @@ import {
   Loader2,
   Coins,
   Save,
+  AlertTriangle,
 } from "lucide-react";
 import { LOTERIAS, getPreco, getOpcoesQtd } from "@/lib/loterias";
 import { getEstrategiasAtivas } from "@/modules/strategies";
@@ -135,6 +136,9 @@ export default function GerarPage() {
   const [salvandoParcial, setSalvandoParcial] = useState<Set<number>>(new Set());
   const [resultadoGeracao, setResultadoGeracao] = useState<{ totalGerados: number; totalSolicitado: number; maiorScore: number; relaxado: boolean } | null>(null);
   const [jogosExpandidos, setJogosExpandidos] = useState(true);
+  const [usarIA, setUsarIA] = useState(false);
+  const [avisoIA, setAvisoIA] = useState<string | null>(null);
+  const [fonteGeracao, setFonteGeracao] = useState<"ia" | "motor-local" | null>(null);
 
   const opcoesQtd = useMemo(() => getOpcoesQtd(slug), [slug]);
   const precoAtual = getPreco(slug, qtdDezenas);
@@ -154,22 +158,43 @@ export default function GerarPage() {
     setIsGenerating(true);
     setGeneratingProgress(0);
     setJogosGerados([]);
+    setAvisoIA(null);
+    setFonteGeracao(null);
 
     try {
-      const response = await fetch(`/api/gerar/${slug}`, {
+      const payload = {
+        estrategias: [estrategiaSelecionada],
+        quantidade,
+        score_minimo: scoreMinimo,
+        qtd_dezenas: qtdDezenas,
+      };
+      let response = await fetch(usarIA ? "/api/ia/gerar" : `/api/gerar/${slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          estrategias: [estrategiaSelecionada],
-          quantidade,
-          score_minimo: scoreMinimo,
-          qtd_dezenas: qtdDezenas,
-        }),
+        body: JSON.stringify(usarIA ? { ...payload, loteria: slug } : payload),
       });
+
+      // 503 = IA não configurada no servidor → degraceiro para o motor local, com aviso
+      if (usarIA && response.status === 503) {
+        const data = await response.json().catch(() => ({}) as Record<string, unknown>);
+        if (data.code === "ia_sem_chave") {
+          setFonteGeracao("motor-local");
+          setAvisoIA("IA não configurada no servidor — jogos gerados pelo motor local.");
+          response = await fetch(`/api/gerar/${slug}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+      }
 
       if (!response.ok) throw new Error("Erro ao gerar jogos");
 
       const data = await response.json();
+      if (usarIA && (data.fonte === "ia" || data.fonte === "motor-local")) {
+        setFonteGeracao(data.fonte);
+        if (data.aviso) setAvisoIA(data.aviso);
+      }
       setJogosGerados(data.jogos);
       setLoteId(data.lote_id);
       // Progresso real: jogos aprovados vs pedidos
@@ -248,7 +273,7 @@ export default function GerarPage() {
   };
 
   const decrementarQuantidade = () => setQuantidade(prev => Math.max(1, prev - 1));
-  const incrementarQuantidade = () => setQuantidade(prev => Math.min(100, prev + 1));
+  const incrementarQuantidade = () => setQuantidade(prev => Math.min(usarIA ? 50 : 100, prev + 1));
 
   const getScoreColor = (score: number) => {
     if (score >= 80) return "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20";
@@ -444,10 +469,10 @@ export default function GerarPage() {
                       value={quantidade}
                       onChange={e => {
                         const val = parseInt(e.target.value, 10);
-                        if (!isNaN(val)) setQuantidade(Math.max(1, Math.min(250, val)));
+                        if (!isNaN(val)) setQuantidade(Math.max(1, Math.min(usarIA ? 50 : 250, val)));
                       }}
                       min={1}
-max={250}
+                      max={usarIA ? 50 : 250}
                       className="w-16 h-10 text-center text-lg font-bold tabular-nums bg-background border border-input rounded-lg focus:ring-2 focus:ring-primary/40 focus:border-primary outline-none"
                       aria-label="Quantidade de jogos"
                     />
@@ -455,15 +480,48 @@ max={250}
                       variant="outline"
                       size="icon"
                       onClick={incrementarQuantidade}
-                      disabled={quantidade >= 250}
+                      disabled={quantidade >= (usarIA ? 50 : 250)}
                       aria-label="Aumentar quantidade"
                       className="h-10 w-10 rounded-full shrink-0"
                     >
                       <Plus className="h-4 w-4" />
                     </Button>
-                    <span className="text-xs text-muted-foreground ml-1">até 250</span>
+                    <span className="text-xs text-muted-foreground ml-1">até {usarIA ? 50 : 250}</span>
                   </div>
                 </div>
+              </div>
+
+              {/* IA (MiMo) toggle */}
+              <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                <div className="flex items-start gap-2 min-w-0">
+                  <Brain className="h-4 w-4 mt-0.5 text-fuchsia-500 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold block">Gerar com IA (MiMo)</span>
+                    <span className="text-xs text-muted-foreground">
+                      Modelo MiMo V2.6 Flash · até 50 jogos por vez · validados pelo motor
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={usarIA}
+                  aria-label="Gerar com IA"
+                  onClick={() => {
+                    const proximo = !usarIA;
+                    setUsarIA(proximo);
+                    if (proximo) setQuantidade(prev => Math.min(prev, 50));
+                  }}
+                  className={`relative h-6 w-11 shrink-0 rounded-full transition-colors cursor-pointer ${
+                    usarIA ? "bg-fuchsia-500" : "bg-muted"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${
+                      usarIA ? "left-[22px]" : "left-0.5"
+                    }`}
+                  />
+                </button>
               </div>
 
               {/* Generate Button */}
@@ -504,10 +562,12 @@ max={250}
 
               {/* Resultado da geração com progresso real */}
               {!isGenerating && resultadoGeracao && resultadoGeracao.totalSolicitado > 0 && (
-                <div className={`space-y-2 rounded-lg border p-3 ${resultadoGeracao.relaxado ? "border-amber-500/40 bg-amber-500/5" : "border-emerald-500/40 bg-emerald-500/5"}`}>
+                <div className={`space-y-2 rounded-lg border p-3 ${resultadoGeracao.relaxado && fonteGeracao !== "ia" ? "border-amber-500/40 bg-amber-500/5" : "border-emerald-500/40 bg-emerald-500/5"}`}>
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-semibold">
-                      {resultadoGeracao.totalGerados} de {resultadoGeracao.totalSolicitado} jogo(s) com score ≥ {scoreMinimo}
+                      {fonteGeracao === "ia"
+                        ? `${resultadoGeracao.totalGerados} de ${resultadoGeracao.totalSolicitado} jogo(s) gerados pela IA`
+                        : `${resultadoGeracao.totalGerados} de ${resultadoGeracao.totalSolicitado} jogo(s) com score ≥ ${scoreMinimo}`}
                     </span>
                     <Badge variant="outline" className="text-xs">
                       maior score: {resultadoGeracao.maiorScore}
@@ -519,7 +579,11 @@ max={250}
                       style={{ width: `${resultadoGeracao.totalSolicitado > 0 ? Math.min(100, (resultadoGeracao.totalGerados / resultadoGeracao.totalSolicitado) * 100) : 0}%` }}
                     />
                   </div>
-                  {resultadoGeracao.relaxado ? (
+                  {fonteGeracao === "ia" ? (
+                    <p className="text-xs text-emerald-600">
+                      Jogos propostos pela IA (MiMo) e validados um a um pelo motor oficial. O score mínimo não filtra a geração por IA — os scores são informativos.
+                    </p>
+                  ) : resultadoGeracao.relaxado ? (
                     <p className="text-xs text-amber-600">
                       Foram gerados {resultadoGeracao.totalGerados} de {resultadoGeracao.totalSolicitado} jogo(s). Os jogos abaixo de {scoreMinimo} foram REJEITADOS — apenas {resultadoGeracao.totalGerados} atingiram a meta. Reduza o score mínimo ou tente novamente para buscar mais.
                     </p>
@@ -528,6 +592,14 @@ max={250}
                       Geração concluída: {resultadoGeracao.totalGerados} jogo(s) com score ≥ {scoreMinimo}.
                     </p>
                   )}
+                </div>
+              )}
+
+              {/* Aviso visível: IA indisponível / não configurada (fallback ≠ sucesso) */}
+              {!isGenerating && avisoIA && (
+                <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/5 p-3">
+                  <AlertTriangle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
+                  <p className="text-xs text-amber-700 dark:text-amber-300">{avisoIA}</p>
                 </div>
               )}
             </CardContent>
@@ -543,12 +615,15 @@ max={250}
                 onClick={() => setJogosExpandidos(!jogosExpandidos)}
                 className="flex items-center gap-2 hover:bg-accent/40 rounded-lg px-2 py-1 transition-colors cursor-pointer text-left"
               >
-                <h2 className="text-lg font-bold flex items-center gap-2">
+                  <h2 className="text-lg font-bold flex items-center gap-2">
                   <BarChart3 className="h-5 w-5 text-primary" />
                   Jogos Gerados
                   <Badge variant="secondary" className="ml-1">
                     {jogosGerados.length}
                   </Badge>
+                  {fonteGeracao === "ia" && (
+                    <Badge className="bg-fuchsia-500 text-white border-0">IA</Badge>
+                  )}
                 </h2>
                 <span className="text-xs text-muted-foreground">{jogosExpandidos ? "▲ Retrair" : "▼ Expandir"}</span>
               </button>
@@ -596,9 +671,9 @@ max={250}
                           </span>
                         )}
                         <div className="flex flex-wrap gap-1.5">
-                          {jogo.dezenas.map(d => (
+                          {jogo.dezenas.map((d, di) => (
                             <span
-                              key={d}
+                              key={`${index}-${di}`}
                               className="inline-flex items-center justify-center h-9 min-w-[2.25rem] rounded-full bg-primary/10 text-primary text-sm font-bold tabular-nums border border-primary/20"
                             >
                               {String(d).padStart(2, "0")}
