@@ -6,15 +6,26 @@ export {
   limparConteudoIA,
   validarJogosIA,
   chamarModeloIA,
+  chamarModeloIAAuto,
+  chamarComConfig,
+  ErroChamadaIA,
   topFrequencias,
 } from "./ia";
 export type { MensagensIA, OpcoesPromptIA } from "./ia";
 export {
   PROVIDERS_IA,
+  ORDEM_FALLBACK_IA,
   isProviderIA,
   resolverConfigIA,
+  resolverCadeiaIA,
+  configDeProvider,
+  chaveDoProvider,
   statusChavesIA,
+  statusCooldownsIA,
   invalidarCacheConfigIA,
+  marcarProviderEsgotado,
+  providerEmCooldown,
+  limparCooldownsIA,
 } from "./provider";
 export type { ProviderIA, InfoProviderIA, ConfigIA } from "./provider";
 export { salvarLoteGeracao } from "./lote";

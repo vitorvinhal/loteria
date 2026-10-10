@@ -1,6 +1,6 @@
 import { getSupabase } from "@/lib/db";
 
-export type ProviderIA = "groq" | "nvidia";
+export type ProviderIA = "groq" | "nvidia" | "apinex" | "bai" | "agnes";
 
 export interface InfoProviderIA {
   id: ProviderIA;
@@ -34,24 +34,68 @@ export const PROVIDERS_IA: Record<ProviderIA, InfoProviderIA> = {
     envKey: "NVIDIA_API_KEY",
     comoObter: "build.nvidia.com",
   },
+  apinex: {
+    id: "apinex",
+    nome: "APInex",
+    baseUrl: "https://apinex.bond/v1",
+    modeloPadrao: "free/glm-5.3-flash",
+    modelosSugeridos: ["free/glm-5.3-flash", "free/gpt-6-luna", "free/kimi-k3"],
+    envKey: "APINEX_API_KEY",
+    comoObter: "apinex.bond",
+  },
+  bai: {
+    id: "bai",
+    nome: "B.AI",
+    baseUrl: "https://api.b.ai/v1",
+    modeloPadrao: "gpt-5.4-mini",
+    modelosSugeridos: ["gpt-5.4-mini", "qwen3.8-max", "minimax-m3"],
+    envKey: "BAI_API_KEY",
+    comoObter: "b.ai",
+  },
+  agnes: {
+    id: "agnes",
+    nome: "Agnes AI",
+    baseUrl: "https://apihub.agnes-ai.com/v1",
+    modeloPadrao: "agnes-2.5-flash",
+    modelosSugeridos: ["agnes-2.5-flash", "agnes-3.0-flash", "agnes-2.5-pro"],
+    envKey: "AGNES_API_KEY",
+    comoObter: "platform.agnes-ai.com",
+  },
 };
+
+export const ORDEM_FALLBACK_IA: ProviderIA[] = ["groq", "nvidia", "apinex", "bai", "agnes"];
 
 export interface ConfigIA {
   baseUrl: string;
   modelo: string;
   apiKey: string;
-  origem: "banco" | "env" | "groq-padrao";
+  origem: "banco" | "env" | "groq-padrao" | "fallback";
   provider: ProviderIA | "custom" | null;
 }
 
 export function isProviderIA(v: unknown): v is ProviderIA {
-  return v === "groq" || v === "nvidia";
+  return v === "groq" || v === "nvidia" || v === "apinex" || v === "bai" || v === "agnes";
 }
-function chaveDoProvider(provider: ProviderIA): string | undefined {
+export function chaveDoProvider(provider: ProviderIA): string | undefined {
   const direta = process.env[PROVIDERS_IA[provider].envKey]?.trim();
   if (direta) return direta;
   if (provider === "groq") return process.env.AIMODEL_API_KEY?.trim();
   return undefined;
+}
+
+export function configDeProvider(provider: ProviderIA, modelo?: string): ConfigIA {
+  const info = PROVIDERS_IA[provider];
+  const apiKey = chaveDoProvider(provider);
+  if (!apiKey) {
+    throw new Error(`chave do provider ${info.nome} não configurada no servidor (${info.envKey})`);
+  }
+  return {
+    baseUrl: info.baseUrl,
+    modelo: modelo?.trim() || info.modeloPadrao,
+    apiKey,
+    origem: "banco",
+    provider,
+  };
 }
 
 interface LinhaConfigIA {
@@ -66,6 +110,30 @@ let cache: { valor: ConfigIA | null; expira: number } | null = null;
 export function invalidarCacheConfigIA(): void {
   cache = null;
 }
+
+const COOLDOWN_ESGOTADO_MS = 30 * 60_000;
+const COOLDOWN_RATE_MS = 5 * 60_000;
+const cooldowns = new Map<ProviderIA, number>();
+
+export function marcarProviderEsgotado(provider: ProviderIA, status?: number): void {
+  const ms = status === 429 ? COOLDOWN_RATE_MS : COOLDOWN_ESGOTADO_MS;
+  cooldowns.set(provider, Date.now() + ms);
+}
+
+export function providerEmCooldown(provider: ProviderIA): boolean {
+  const expira = cooldowns.get(provider);
+  if (!expira) return false;
+  if (expira <= Date.now()) {
+    cooldowns.delete(provider);
+    return false;
+  }
+  return true;
+}
+
+export function limparCooldownsIA(): void {
+  cooldowns.clear();
+}
+
 export async function resolverConfigIA(): Promise<ConfigIA> {
   if (cache && cache.expira > Date.now()) return cache.valor as ConfigIA;
 
@@ -138,9 +206,65 @@ export async function resolverConfigIA(): Promise<ConfigIA> {
   cache = { valor: resolvida, expira: Date.now() + TTL_CACHE_MS };
   return resolvida;
 }
+
+export async function resolverCadeiaIA(): Promise<ConfigIA[]> {
+  let primaria: ConfigIA | null = null;
+  let erroPrimaria: unknown = null;
+  try {
+    primaria = await resolverConfigIA();
+  } catch (e) {
+    erroPrimaria = e;
+  }
+
+  const cadeia: ConfigIA[] = [];
+  if (primaria) cadeia.push(primaria);
+
+  for (const id of ORDEM_FALLBACK_IA) {
+    if (primaria && primaria.provider === id) continue;
+    const info = PROVIDERS_IA[id];
+    const apiKey = chaveDoProvider(id);
+    if (!apiKey) continue;
+    if (
+      primaria &&
+      !primaria.provider &&
+      primaria.baseUrl === info.baseUrl &&
+      primaria.modelo === info.modeloPadrao
+    ) {
+      continue;
+    }
+    cadeia.push({
+      baseUrl: info.baseUrl,
+      modelo: info.modeloPadrao,
+      apiKey,
+      origem: "fallback",
+      provider: id,
+    });
+  }
+
+  if (!cadeia.length) {
+    throw erroPrimaria instanceof Error
+      ? erroPrimaria
+      : new Error("nenhuma configuração de IA disponível (sem chaves configuradas)");
+  }
+  return cadeia;
+}
+
 export function statusChavesIA(): Record<ProviderIA, boolean> {
   return {
     groq: Boolean(chaveDoProvider("groq")),
     nvidia: Boolean(chaveDoProvider("nvidia")),
+    apinex: Boolean(chaveDoProvider("apinex")),
+    bai: Boolean(chaveDoProvider("bai")),
+    agnes: Boolean(chaveDoProvider("agnes")),
+  };
+}
+
+export function statusCooldownsIA(): Record<ProviderIA, boolean> {
+  return {
+    groq: providerEmCooldown("groq"),
+    nvidia: providerEmCooldown("nvidia"),
+    apinex: providerEmCooldown("apinex"),
+    bai: providerEmCooldown("bai"),
+    agnes: providerEmCooldown("agnes"),
   };
 }

@@ -1,6 +1,13 @@
 import type { Loteria } from "@/types";
 import type { JogoSorteado } from "@/modules/lottery";
-import { resolverConfigIA } from "./provider";
+import {
+  resolverConfigIA,
+  resolverCadeiaIA,
+  marcarProviderEsgotado,
+  providerEmCooldown,
+  PROVIDERS_IA,
+  type ConfigIA,
+} from "./provider";
 
 /** Teto de jogos por chamada de IA (controle de custo/latência). */
 export const LIMITE_JOGOS_IA = 50;
@@ -169,14 +176,23 @@ export function validarJogosIA(
   return { validos, descartados };
 }
 
-/**
- * Chama o modelo (OpenAI-compatible) e devolve o conteúdo JSON já limpo.
- * Provider/modelo/chave vêm de resolverConfigIA() (painel admin > env > Groq).
- * Sem nenhuma configuração lança erro — o chamador decide o fallback.
- */
-export async function chamarModeloIA(mensagens: MensagensIA): Promise<string> {
-  const cfg = await resolverConfigIA();
+export class ErroChamadaIA extends Error {
+  readonly status?: number;
+  constructor(mensagem: string, status?: number) {
+    super(mensagem);
+    this.name = "ErroChamadaIA";
+    this.status = status;
+  }
+}
 
+function rotuloConfig(cfg: ConfigIA): string {
+  if (cfg.provider && cfg.provider !== "custom") {
+    return `${PROVIDERS_IA[cfg.provider].nome}/${cfg.modelo}`;
+  }
+  return cfg.baseUrl;
+}
+
+export async function chamarComConfig(cfg: ConfigIA, mensagens: MensagensIA): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_IA_MS);
   try {
@@ -198,12 +214,52 @@ export async function chamarModeloIA(mensagens: MensagensIA): Promise<string> {
       signal: controller.signal,
       cache: 'no-store',
     });
-    if (!res.ok) throw new Error(`modelo respondeu HTTP ${res.status}`);
+    if (!res.ok) throw new ErroChamadaIA(`modelo respondeu HTTP ${res.status}`, res.status);
     const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
     const conteudo = data.choices?.[0]?.message?.content;
-    if (!conteudo) throw new Error('resposta vazia do modelo');
+    if (!conteudo) throw new ErroChamadaIA('resposta vazia do modelo');
     return limparConteudoIA(conteudo);
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      throw new ErroChamadaIA(`timeout após ${TIMEOUT_IA_MS}ms`);
+    }
+    throw e;
   } finally {
     clearTimeout(timer);
   }
+}
+
+export async function chamarModeloIA(mensagens: MensagensIA): Promise<string> {
+  const cfg = await resolverConfigIA();
+  return chamarComConfig(cfg, mensagens);
+}
+
+export async function chamarModeloIAAuto(mensagens: MensagensIA): Promise<string> {
+  const cadeia = await resolverCadeiaIA();
+  const erros: string[] = [];
+
+  for (const cfg of cadeia) {
+    const rotulo = rotuloConfig(cfg);
+    if (cfg.provider && cfg.provider !== "custom" && providerEmCooldown(cfg.provider)) {
+      erros.push(`${rotulo}: em cooldown (limite recente)`);
+      continue;
+    }
+    try {
+      const out = await chamarComConfig(cfg, mensagens);
+      if (erros.length) {
+        console.warn(`[IA] resposta obtida via ${rotulo} após: ${erros.join("; ")}`);
+      }
+      return out;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const status = e instanceof ErroChamadaIA ? e.status : undefined;
+      if (cfg.provider && cfg.provider !== "custom" && status && [402, 403, 429].includes(status)) {
+        marcarProviderEsgotado(cfg.provider, status);
+        console.warn(`[IA] ${rotulo} marcado em cooldown (HTTP ${status})`);
+      }
+      erros.push(`${rotulo}: ${msg}`);
+    }
+  }
+
+  throw new Error(`todos os provedores de IA falharam (${erros.join("; ")})`);
 }

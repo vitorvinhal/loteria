@@ -51,6 +51,8 @@ interface ConfigIADados {
   base_url: string | null;
   atualizado_em: string | null;
   chaves: Record<string, boolean>;
+  esgotados?: Record<string, boolean>;
+  ativa?: { provider: string | null; modelo: string; origem: string } | null;
   providers: ProviderIAInfo[];
 }
 
@@ -68,6 +70,9 @@ export default function AdminPage() {
   const [iaModelo, setIaModelo] = useState("");
   const [iaAcao, setIaAcao] = useState<"salvar" | "testar" | null>(null);
   const [iaMensagem, setIaMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+  const [iaTestes, setIaTestes] = useState<
+    Record<string, { estado: "testando" | "ok" | "erro"; texto: string }>
+  >({});
 
   const carregarConfigIA = async () => {
     try {
@@ -122,6 +127,29 @@ export default function AdminPage() {
       setIaMensagem({ tipo: "erro", texto: "Erro de rede no teste." });
     } finally {
       setIaAcao(null);
+    }
+  };
+
+  const testarProviderIA = async (id: string) => {
+    setIaTestes((t) => ({ ...t, [id]: { estado: "testando", texto: "Testando..." } }));
+    try {
+      const res = await fetch("/api/admin/config-ia", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: id }),
+      });
+      const d = await res.json();
+      if (res.ok && d.ok) {
+        setIaTestes((t) => ({
+          ...t,
+          [id]: { estado: "ok", texto: `OK em ${d.latencia_ms} ms · ${d.modelo}` },
+        }));
+      } else {
+        setIaTestes((t) => ({ ...t, [id]: { estado: "erro", texto: d.erro || "Falhou." } }));
+      }
+    } catch (e) {
+      console.error("Erro ao testar provider IA:", e);
+      setIaTestes((t) => ({ ...t, [id]: { estado: "erro", texto: "Erro de rede." } }));
     }
   };
 
@@ -347,11 +375,26 @@ export default function AdminPage() {
                 IA — Provedor de Geração
               </CardTitle>
               <CardDescription>
-                Define qual provedor de IA gera os jogos quando o usuário ativa a opção de IA.
-                As chaves ficam só no servidor (Vercel/env) — aqui aparece só se cada uma existe.
+                Define qual provedor de IA gera os jogos. Se a API ativa esgotar limite ou saldo,
+                o sistema tenta a próxima sozinho (fallback automático). As chaves ficam só no
+                servidor (Vercel/env) — aqui aparece só se cada uma existe.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {configIA.ativa ? (
+                <p className="text-xs text-muted-foreground">
+                  Ativa agora:{" "}
+                  {configIA.ativa.provider
+                    ? configIA.providers.find((p) => p.id === configIA.ativa?.provider)?.nome ??
+                      configIA.ativa.provider
+                    : "configuração legada (env)"}{" "}
+                  · {configIA.ativa.modelo} · origem: {configIA.ativa.origem}
+                </p>
+              ) : (
+                <p className="text-xs text-destructive">
+                  Nenhuma IA configurada no servidor — geração por IA desativada.
+                </p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <Label>Provedor</Label>
@@ -388,12 +431,43 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                {configIA.providers.map((p) => (
-                  <Badge key={p.id} variant={configIA.chaves[p.id] ? "default" : "outline"}>
-                    {p.nome}: {configIA.chaves[p.id] ? "chave configurada" : `sem ${p.envKey}`}
-                  </Badge>
-                ))}
+              <div className="space-y-2">
+                {configIA.providers.map((p) => {
+                  const t = iaTestes[p.id];
+                  const esgotado = configIA.esgotados?.[p.id];
+                  return (
+                    <div
+                      key={p.id}
+                      className="flex flex-wrap items-center gap-2 rounded border px-3 py-2"
+                    >
+                      <span className="text-sm font-medium">{p.nome}</span>
+                      <Badge variant={configIA.chaves[p.id] ? "default" : "outline"}>
+                        {configIA.chaves[p.id] ? "chave ok" : `sem ${p.envKey}`}
+                      </Badge>
+                      {esgotado && <Badge variant="destructive">em cooldown</Badge>}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => testarProviderIA(p.id)}
+                        disabled={t?.estado === "testando"}
+                      >
+                        {t?.estado === "testando" ? (
+                          <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1" />
+                        ) : (
+                          <Zap className="h-3.5 w-3.5 mr-1" />
+                        )}
+                        Testar
+                      </Button>
+                      {t && t.estado !== "testando" && (
+                        <span
+                          className={`text-xs ${t.estado === "ok" ? "text-primary" : "text-destructive"}`}
+                        >
+                          {t.texto}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
 
               <p className="text-xs text-muted-foreground">

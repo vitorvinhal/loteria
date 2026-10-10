@@ -5,8 +5,12 @@ import {
   PROVIDERS_IA,
   isProviderIA,
   statusChavesIA,
+  statusCooldownsIA,
   invalidarCacheConfigIA,
-  chamarModeloIA,
+  chamarComConfig,
+  resolverConfigIA,
+  configDeProvider,
+  type ConfigIA,
 } from "@/modules/generation";
 
 async function exigirAdmin() {
@@ -18,6 +22,7 @@ async function exigirAdmin() {
   }
   return { user };
 }
+
 export async function GET() {
   try {
     const auth = await exigirAdmin();
@@ -29,12 +34,22 @@ export async function GET() {
       .eq("id", 1)
       .maybeSingle();
 
+    let ativa: { provider: string | null; modelo: string; origem: string } | null = null;
+    try {
+      const cfg = await resolverConfigIA();
+      ativa = { provider: cfg.provider, modelo: cfg.modelo, origem: cfg.origem };
+    } catch {
+      ativa = null;
+    }
+
     return NextResponse.json({
       provider: data?.provider ?? "groq",
       model: data?.model ?? PROVIDERS_IA.groq.modeloPadrao,
       base_url: data?.base_url ?? null,
       atualizado_em: data?.updated_at ?? null,
       chaves: statusChavesIA(),
+      esgotados: statusCooldownsIA(),
+      ativa,
       providers: Object.values(PROVIDERS_IA),
     });
   } catch (e) {
@@ -42,6 +57,7 @@ export async function GET() {
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }
+
 export async function PUT(request: NextRequest) {
   try {
     const auth = await exigirAdmin();
@@ -89,23 +105,43 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }
-export async function POST() {
+
+export async function POST(request: NextRequest) {
   try {
     const auth = await exigirAdmin();
     if ("erro" in auth) return auth.erro;
 
+    const body = (await request.json().catch(() => null)) as {
+      provider?: string;
+      model?: string;
+    } | null;
+
     const inicio = Date.now();
-    const conteudo = await chamarModeloIA({
-      system: "Você confirma que está operacional. Responda somente JSON.",
-      user: 'Responda exatamente: {"ok":true}',
-    });
+    let resultado: { provider: string | null; modelo: string; resposta: string };
+    try {
+      const cfg: ConfigIA =
+        body && isProviderIA(body.provider)
+          ? configDeProvider(body.provider, body.model)
+          : await resolverConfigIA();
+      const resposta = await chamarComConfig(cfg, {
+        system: "Você confirma que está operacional. Responda somente JSON.",
+        user: 'Responda exatamente: {"ok":true}',
+      });
+      resultado = { provider: cfg.provider, modelo: cfg.modelo, resposta };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return NextResponse.json({ ok: false, erro: msg }, { status: 502 });
+    }
+
     return NextResponse.json({
       ok: true,
       latencia_ms: Date.now() - inicio,
-      resposta: conteudo.slice(0, 200),
+      resposta: resultado.resposta.slice(0, 200),
+      provider: resultado.provider,
+      modelo: resultado.modelo,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ ok: false, erro: msg }, { status: 502 });
+    console.error("[Admin/config-ia] Erro POST:", e);
+    return NextResponse.json({ error: "Erro interno" }, { status: 500 });
   }
 }

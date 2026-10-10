@@ -5,9 +5,9 @@ import { calcularScore } from "@/modules/scoring";
 import { obterRegra, type JogoSorteado } from "@/modules/lottery";
 import {
   buscarEstatisticasReais,
-  chamarModeloIA,
+  chamarModeloIAAuto,
   montarMensagensIA,
-  resolverConfigIA,
+  resolverCadeiaIA,
   validarJogosIA,
   LIMITE_JOGOS_IA,
   topFrequencias,
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
         : loteria.qtd_dezenas_padrao;
 
     try {
-      await resolverConfigIA();
+      await resolverCadeiaIA();
     } catch (e) {
       const motivo = e instanceof Error ? e.message : String(e);
       return NextResponse.json(
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
         estrategia: estrategiaConfig,
         topFrequentes: topFrequencias(stats.frequencia, 12),
       });
-      const conteudo = await chamarModeloIA(mensagens);
+      const conteudo = await chamarModeloIAAuto(mensagens);
       const parsed: unknown = JSON.parse(conteudo);
       const { validos, descartados } = validarJogosIA(parsed, loteria, regra);
       if (validos.length === 0) {
