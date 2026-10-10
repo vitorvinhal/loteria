@@ -35,7 +35,6 @@ describe("cadeia de fallback de provedores de IA", () => {
     vi.stubEnv("GROQ_API_KEY", "gsk_teste");
     vi.stubEnv("NVIDIA_API_KEY", "nvapi_teste");
     vi.stubEnv("APINEX_API_KEY", "sk_apinex_teste");
-    vi.stubEnv("BAI_API_KEY", "sk_bai_teste");
     vi.stubEnv("AGNES_API_KEY", "sk_agnes_teste");
     vi.stubEnv("AIMODEL_API_KEY", "");
     fetchMock = vi.fn();
@@ -110,7 +109,6 @@ describe("cadeia de fallback de provedores de IA", () => {
     vi.stubEnv("GROQ_API_KEY", "");
     vi.stubEnv("NVIDIA_API_KEY", "");
     vi.stubEnv("APINEX_API_KEY", "");
-    vi.stubEnv("BAI_API_KEY", "");
     vi.stubEnv("AGNES_API_KEY", "");
     invalidarCacheConfigIA();
     await expect(resolverCadeiaIA()).rejects.toThrow();

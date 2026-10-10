@@ -1,6 +1,6 @@
 import { getSupabase } from "@/lib/db";
 
-export type ProviderIA = "groq" | "nvidia" | "apinex" | "bai" | "agnes";
+export type ProviderIA = "groq" | "nvidia" | "apinex" | "agnes";
 
 export interface InfoProviderIA {
   id: ProviderIA;
@@ -43,15 +43,6 @@ export const PROVIDERS_IA: Record<ProviderIA, InfoProviderIA> = {
     envKey: "APINEX_API_KEY",
     comoObter: "apinex.bond",
   },
-  bai: {
-    id: "bai",
-    nome: "B.AI",
-    baseUrl: "https://api.b.ai/v1",
-    modeloPadrao: "gpt-5.4-mini",
-    modelosSugeridos: ["gpt-5.4-mini", "qwen3.8-max", "minimax-m3"],
-    envKey: "BAI_API_KEY",
-    comoObter: "b.ai",
-  },
   agnes: {
     id: "agnes",
     nome: "Agnes AI",
@@ -63,7 +54,7 @@ export const PROVIDERS_IA: Record<ProviderIA, InfoProviderIA> = {
   },
 };
 
-export const ORDEM_FALLBACK_IA: ProviderIA[] = ["groq", "nvidia", "apinex", "bai", "agnes"];
+export const ORDEM_FALLBACK_IA: ProviderIA[] = ["groq", "nvidia", "apinex", "agnes"];
 
 export interface ConfigIA {
   baseUrl: string;
@@ -74,7 +65,7 @@ export interface ConfigIA {
 }
 
 export function isProviderIA(v: unknown): v is ProviderIA {
-  return v === "groq" || v === "nvidia" || v === "apinex" || v === "bai" || v === "agnes";
+  return v === "groq" || v === "nvidia" || v === "apinex" || v === "agnes";
 }
 export function chaveDoProvider(provider: ProviderIA): string | undefined {
   const direta = process.env[PROVIDERS_IA[provider].envKey]?.trim();
@@ -254,7 +245,6 @@ export function statusChavesIA(): Record<ProviderIA, boolean> {
     groq: Boolean(chaveDoProvider("groq")),
     nvidia: Boolean(chaveDoProvider("nvidia")),
     apinex: Boolean(chaveDoProvider("apinex")),
-    bai: Boolean(chaveDoProvider("bai")),
     agnes: Boolean(chaveDoProvider("agnes")),
   };
 }
@@ -264,7 +254,6 @@ export function statusCooldownsIA(): Record<ProviderIA, boolean> {
     groq: providerEmCooldown("groq"),
     nvidia: providerEmCooldown("nvidia"),
     apinex: providerEmCooldown("apinex"),
-    bai: providerEmCooldown("bai"),
     agnes: providerEmCooldown("agnes"),
   };
 }
