@@ -24,12 +24,12 @@ export const PROVIDERS_IA: Record<ProviderIA, InfoProviderIA> = {
   nvidia: {
     id: "nvidia",
     nome: "NVIDIA NIM",
-    baseUrl: "https://inference.api.nvidia.com/v1",
-    modeloPadrao: "meta/llama-3.3-70b-instruct",
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    modeloPadrao: "nvidia/nemotron-3-super-120b-a12b",
     modelosSugeridos: [
-      "meta/llama-3.3-70b-instruct",
-      "qwen/qwen3-coder-480b-a35b-instruct",
-      "deepseek-ai/deepseek-r1",
+      "nvidia/nemotron-3-super-120b-a12b",
+      "openai/gpt-oss-20b",
+      "z-ai/glm-5.3",
     ],
     envKey: "NVIDIA_API_KEY",
     comoObter: "build.nvidia.com",
