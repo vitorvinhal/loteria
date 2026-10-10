@@ -9,7 +9,6 @@ import {
 } from "@/modules/assistant/identity";
 import { chamarChatIA, type AnexoChat, type MensagemChat } from "@/modules/assistant/assistant-chat";
 import { gerarImagem, base64ParaBytes } from "@/modules/assistant/image-gen";
-import { SALA_ID, SALA_TITULO } from "@/modules/assistant/sala";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +56,7 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => null);
     const conteudo = typeof body?.content === "string" ? body.content.trim() : "";
+    const chatId = typeof body?.chat_id === "string" && body.chat_id ? body.chat_id : null;
     const anexos = validarAnexos(body?.attachments);
     if (!conteudo && !anexos.length) {
       return NextResponse.json({ error: "Mensagem vazia" }, { status: 400 });
@@ -77,20 +77,31 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
     const avatar = fotoRow?.avatar_base64 || null;
 
-    const chatAtual = SALA_ID;
-    {
+    let chatAtual = chatId;
+    if (!chatAtual) {
+      const titulo = conteudo ? conteudo.slice(0, 60) : "Novo chat";
+      const { data: chat, error } = await supabase
+        .from("chats")
+        .insert({
+          title: titulo,
+          created_by_user: userName,
+          created_by_uid: uid,
+        })
+        .select("id")
+        .single();
+      if (error || !chat) {
+        console.error("[assistant/chat] erro ao criar chat:", error);
+        return NextResponse.json({ error: "Erro ao criar chat" }, { status: 500 });
+      }
+      chatAtual = chat.id as string;
+    } else {
       const { data: existe } = await supabase
         .from("chats")
         .select("id")
-        .eq("id", SALA_ID)
+        .eq("id", chatAtual)
         .maybeSingle();
       if (!existe) {
-        const { error: erroSala } = await supabase
-          .from("chats")
-          .insert({ id: SALA_ID, title: SALA_TITULO, created_by_user: "11", created_by_uid: null });
-        if (erroSala && erroSala.code !== "23505") {
-          console.error("[assistant/chat] erro ao criar sala:", erroSala);
-        }
+        return NextResponse.json({ error: "Chat não encontrado" }, { status: 404 });
       }
     }
 
@@ -160,7 +171,7 @@ export async function POST(req: NextRequest) {
           const { bytes, mime } = base64ParaBytes(dataUrl);
           mimeImg = mime;
           ext = mime.includes("png") ? "png" : "jpg";
-          const caminho = `11/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+          const caminho = `${uid}/11-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
           const { error: erroUpload } = await supabase.storage
             .from("assistant-attachments")
             .upload(caminho, bytes, { contentType: mime, upsert: false });

@@ -24,11 +24,16 @@ function getRecognition(): (new () => SpeechRecognitionLike) | null {
 export function useSpeechRecognition() {
   const [ouvindo, setOuvindo] = useState(false);
   const [transcricao, setTranscricao] = useState("");
+  const [erro, setErro] = useState<string | null>(null);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const suporta = getRecognition() !== null;
 
   const parar = useCallback(() => {
-    recRef.current?.stop();
+    try {
+      recRef.current?.stop();
+    } catch {
+      /* já parado */
+    }
     recRef.current = null;
     setOuvindo(false);
   }, []);
@@ -36,7 +41,12 @@ export function useSpeechRecognition() {
   const iniciar = useCallback(
     (onFinal: (texto: string) => void) => {
       const Reconhecimento = getRecognition();
-      if (!Reconhecimento || ouvindo) return;
+      if (!Reconhecimento) {
+        setErro("Seu navegador não suporta ditado por voz. Use Chrome ou Edge.");
+        return;
+      }
+      if (ouvindo) return;
+      setErro(null);
       const rec = new Reconhecimento();
       rec.lang = "pt-BR";
       rec.continuous = false;
@@ -60,7 +70,18 @@ export function useSpeechRecognition() {
           setTranscricao("");
         }
       };
-      rec.onerror = () => {
+      rec.onerror = (ev: unknown) => {
+        const e = ev as { error?: string };
+        const codigo = e?.error ?? "desconhecido";
+        const msg =
+          codigo === "not-allowed" || codigo === "service-not-allowed"
+            ? "Permissão do microfone negada. Ative nas configurações do navegador."
+            : codigo === "no-speech"
+              ? "Não ouvi nada. Tente falar mais perto do microfone."
+              : codigo === "network"
+                ? "Falha de rede no reconhecimento de voz."
+                : `Erro no microfone (${codigo}).`;
+        setErro(msg);
         setOuvindo(false);
         recRef.current = null;
       };
@@ -68,14 +89,20 @@ export function useSpeechRecognition() {
         setOuvindo(false);
         recRef.current = null;
       };
-      recRef.current = rec;
-      setOuvindo(true);
-      rec.start();
+      try {
+        recRef.current = rec;
+        setOuvindo(true);
+        rec.start();
+      } catch {
+        setErro("Não consegui iniciar o microfone. Tente de novo.");
+        setOuvindo(false);
+        recRef.current = null;
+      }
     },
     [ouvindo]
   );
 
   useEffect(() => () => parar(), [parar]);
 
-  return { suporta, ouvindo, transcricao, iniciar, parar };
+  return { suporta, ouvindo, transcricao, erro, iniciar, parar };
 }

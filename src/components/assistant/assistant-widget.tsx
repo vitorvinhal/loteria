@@ -8,6 +8,7 @@ import { useSpeechRecognition } from "./use-speech-recognition";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog,
@@ -18,7 +19,6 @@ import {
 } from "@/components/ui/dialog";
 import { isAdminUser } from "@/lib/admin";
 import { LOTERIAS } from "@/lib/loterias";
-import { SALA_ID, SALA_TITULO } from "@/modules/assistant/sala";
 import {
   MessageCircle,
   X,
@@ -30,16 +30,25 @@ import {
   Volume2,
   Loader2,
   Paperclip,
+  Plus,
   Copy,
   CheckCircle2,
   Sparkles,
   Trophy,
   Wrench,
+  Menu,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
 type Modo = "fechado" | "compacto" | "expandido";
 type Aba = "chat" | "dev" | "placar";
+
+interface Chat {
+  id: string;
+  title: string;
+  created_by_user: string;
+  created_at: string;
+}
 
 interface Anexo {
   nome: string;
@@ -116,10 +125,13 @@ export function AssistantWidget() {
   const { user, isLoading, avatarUrl } = useAuth();
   const [modo, setModo] = useState<Modo>("fechado");
   const [aba, setAba] = useState<Aba>("chat");
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [chatAtivo, setChatAtivo] = useState<string | null>(null);
   const [mensagens, setMensagens] = useState<Msg[]>([]);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [carregandoChat, setCarregandoChat] = useState(false);
+  const [historicoMobile, setHistoricoMobile] = useState(false);
   const [melhorias, setMelhorias] = useState<Melhoria[]>([]);
   const [ranking, setRanking] = useState<LinhaRanking[]>([]);
   const [anexos, setAnexos] = useState<Anexo[]>([]);
@@ -132,7 +144,7 @@ export function AssistantWidget() {
 
   const msgsRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const { suporta, ouvindo, transcricao, iniciar, parar } = useSpeechRecognition();
+  const { suporta, ouvindo, transcricao, erro: erroVoz, iniciar, parar } = useSpeechRecognition();
 
   const ehAdmin = isAdminUser(user);
   const nomeUsuario = (() => {
@@ -146,24 +158,42 @@ export function AssistantWidget() {
     return "Você";
   })();
 
+  useEffect(() => {
+    if (erroVoz) toast.error(erroVoz);
+  }, [erroVoz]);
+
   const irParaFim = useCallback(() => {
     requestAnimationFrame(() => {
       msgsRef.current?.scrollTo({ top: msgsRef.current.scrollHeight, behavior: "smooth" });
     });
   }, []);
 
-  const carregarMensagens = useCallback(async () => {
-    setCarregandoChat(true);
+  const carregarChats = useCallback(async () => {
     try {
-      const res = await fetch(`/api/assistant/messages?chat_id=${SALA_ID}`);
+      const res = await fetch("/api/assistant/chats");
       if (!res.ok) return;
-      const json = (await res.json()) as { mensagens: Msg[] };
-      setMensagens(json.mensagens);
-      irParaFim();
-    } finally {
-      setCarregandoChat(false);
+      const json = (await res.json()) as { chats: Chat[] };
+      setChats(json.chats);
+    } catch {
+      /* silencioso */
     }
-  }, [irParaFim]);
+  }, []);
+
+  const carregarMensagens = useCallback(
+    async (chatId: string) => {
+      setCarregandoChat(true);
+      try {
+        const res = await fetch(`/api/assistant/messages?chat_id=${encodeURIComponent(chatId)}`);
+        if (!res.ok) return;
+        const json = (await res.json()) as { mensagens: Msg[] };
+        setMensagens(json.mensagens);
+        irParaFim();
+      } finally {
+        setCarregandoChat(false);
+      }
+    },
+    [irParaFim]
+  );
 
   const carregarMelhorias = useCallback(async () => {
     try {
@@ -188,9 +218,8 @@ export function AssistantWidget() {
   }, []);
 
   useEffect(() => {
-    if (modo === "fechado") return;
-    void carregarMensagens();
-  }, [modo, carregarMensagens]);
+    if (modo !== "fechado") void carregarChats();
+  }, [modo, carregarChats]);
 
   useEffect(() => {
     if (modo === "expandido") {
@@ -200,12 +229,12 @@ export function AssistantWidget() {
   }, [modo, aba, carregarMelhorias, carregarRanking]);
 
   useEffect(() => {
-    if (modo === "fechado" || !supabase) return;
+    if (modo === "fechado" || !supabase || !chatAtivo) return;
     const canal = supabase
-      .channel("sala-11-messages")
+      .channel(`chat-${chatAtivo}`)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `chat_id=eq.${SALA_ID}` },
+        { event: "INSERT", schema: "public", table: "messages", filter: `chat_id=eq.${chatAtivo}` },
         (payload) => {
           const nova = payload.new as Msg;
           setMensagens((prev) => {
@@ -217,10 +246,14 @@ export function AssistantWidget() {
         }
       )
       .subscribe();
+    const poll = setInterval(() => {
+      void carregarMensagens(chatAtivo);
+    }, 12000);
     return () => {
       void supabase.removeChannel(canal);
+      clearInterval(poll);
     };
-  }, [modo, irParaFim]);
+  }, [modo, chatAtivo, irParaFim, carregarMensagens]);
 
   const enviarMensagem = useCallback(
     async (conteudo: string, listaAnexos: Anexo[]) => {
@@ -243,41 +276,47 @@ export function AssistantWidget() {
         const res = await fetch("/api/assistant/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: conteudo, attachments: listaAnexos }),
+          body: JSON.stringify({ chat_id: chatAtivo, content: conteudo, attachments: listaAnexos }),
         });
         const json = await res.json().catch(() => null);
         if (!res.ok) {
           toast.error(json?.error ?? "Erro ao enviar mensagem");
           return;
         }
+        const novoChatId = json.chat_id as string;
+        if (novoChatId !== chatAtivo) setChatAtivo(novoChatId);
         if (json.melhoria_salva) toast.success("Sugestão salva na Central de Melhorias!");
-        await carregarMensagens();
+        await carregarMensagens(novoChatId);
+        void carregarChats();
       } catch {
         toast.error("Erro de rede ao enviar mensagem");
       } finally {
         setEnviando(false);
       }
     },
-    [enviando, user, nomeUsuario, avatarUrl, irParaFim, carregarMensagens]
+    [chatAtivo, enviando, user, nomeUsuario, avatarUrl, irParaFim, carregarMensagens, carregarChats]
   );
 
-  const falar = useCallback(async (id: string, conteudo: string) => {
-    if (audioCarregando === id) return;
-    setAudioCarregando(id);
-    try {
-      const res = await fetch(`/api/tts?text=${encodeURIComponent(conteudo.slice(0, 2000))}`);
-      if (!res.ok) throw new Error("falha");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => URL.revokeObjectURL(url);
-      await audio.play();
-    } catch {
-      toast.error("Não consegui falar agora. Tente novamente.");
-    } finally {
-      setAudioCarregando(null);
-    }
-  }, [audioCarregando]);
+  const falar = useCallback(
+    async (id: string, conteudo: string) => {
+      if (audioCarregando === id) return;
+      setAudioCarregando(id);
+      try {
+        const res = await fetch(`/api/tts?text=${encodeURIComponent(conteudo.slice(0, 2000))}`);
+        if (!res.ok) throw new Error("falha");
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => URL.revokeObjectURL(url);
+        await audio.play();
+      } catch {
+        toast.error("Não consegui falar agora. Tente novamente.");
+      } finally {
+        setAudioCarregando(null);
+      }
+    },
+    [audioCarregando]
+  );
 
   const enviarArquivo = useCallback(async (file: File) => {
     setEnviandoAnexo(true);
@@ -382,8 +421,10 @@ export function AssistantWidget() {
       {!carregandoChat && mensagens.length === 0 && (
         <div className="text-center py-16 text-muted-foreground space-y-3">
           <Avatar11 size={56} className="mx-auto rounded-full" />
-          <p className="text-lg font-medium">Bem-vindo à Sala da 11</p>
-          <p className="text-sm max-w-sm mx-auto">Converse com a 11 e com outros membros. Pergunte sobre loterias, jogos ou deixe um feedback.</p>
+          <p className="text-lg font-medium">Converse com a 11</p>
+          <p className="text-sm max-w-sm mx-auto">
+            Pergunte sobre loterias, peça uma imagem, registre um palpite ou deixe um feedback.
+          </p>
         </div>
       )}
       {mensagens.map((m, idx) => {
@@ -406,7 +447,9 @@ export function AssistantWidget() {
               {mostrarNome && (
                 <p className={`text-[11px] font-medium mb-0.5 px-1 ${meu ? "text-primary" : "text-muted-foreground"}`}>
                   {meu ? "Você" : m.user_name}
-                  {da11 && <span className="ml-1 text-[9px] bg-primary text-primary-foreground rounded px-1 py-px">IA</span>}
+                  {da11 && (
+                    <span className="ml-1 text-[9px] bg-primary text-primary-foreground rounded px-1 py-px">IA</span>
+                  )}
                 </p>
               )}
               <div
@@ -449,11 +492,7 @@ export function AssistantWidget() {
                   disabled={audioCarregando === m.id}
                   className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 hover:text-muted-foreground transition-colors cursor-pointer mt-0.5"
                 >
-                  {audioCarregando === m.id ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                  ) : (
-                    <Volume2 className="h-3 w-3" />
-                  )}
+                  {audioCarregando === m.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Volume2 className="h-3 w-3" />}
                 </button>
               )}
             </div>
@@ -526,7 +565,7 @@ export function AssistantWidget() {
               void enviarMensagem(texto, anexos);
             }
           }}
-          placeholder={ouvindo ? "Ouvindo..." : "Mensagem para a Sala da 11..."}
+          placeholder={ouvindo ? "Ouvindo..." : "Fale ou escreva com a 11..."}
           rows={1}
           className="min-h-[36px] max-h-28 resize-none text-sm bg-transparent border-0 shadow-none focus-visible:ring-0 px-1 py-1"
         />
@@ -558,164 +597,256 @@ export function AssistantWidget() {
   if (modo === "expandido") {
     return (
       <Dialog open onOpenChange={(o) => { if (!o) setModo("compacto"); }}>
-        <DialogContent showCloseButton={false} className="max-w-full sm:max-w-4xl w-full sm:w-[96vw] h-full sm:h-[90vh] p-0 gap-0 overflow-hidden rounded-none sm:rounded-lg">
+        <DialogContent
+          showCloseButton={false}
+          className="max-w-full sm:max-w-5xl w-full sm:w-[96vw] h-full sm:h-[92vh] p-0 gap-0 overflow-hidden rounded-none sm:rounded-lg"
+        >
           <DialogHeader className="sr-only">
-            <DialogTitle>Sala da 11</DialogTitle>
-            <DialogDescription>Chat compartilhado, central de melhorias e placar</DialogDescription>
+            <DialogTitle>Assistente 11 — Workspace</DialogTitle>
+            <DialogDescription>Chat colaborativo, central de melhorias e placar</DialogDescription>
           </DialogHeader>
-          <div className="flex flex-col h-full min-h-0">
-            <div className="border-b px-3 py-2.5 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <Avatar11 size={28} className="rounded-full" />
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold leading-tight">{SALA_TITULO}</p>
-                  <p className="text-[11px] text-muted-foreground leading-tight">Chat compartilhado</p>
-                </div>
-              </div>
-              <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)}>
-                <TabsList className="h-9">
-                  <TabsTrigger value="chat" className="gap-1.5 text-xs px-2.5">
-                    <MessageCircle className="h-3.5 w-3.5" /> Chat
-                  </TabsTrigger>
-                  <TabsTrigger value="dev" className="gap-1.5 text-xs px-2.5">
-                    <Wrench className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Dev</span>
-                  </TabsTrigger>
-                  <TabsTrigger value="placar" className="gap-1.5 text-xs px-2.5">
-                    <Trophy className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Placar</span>
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              <div className="flex items-center gap-0.5 shrink-0">
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setModo("compacto")} title="Minimizar">
-                  <Minimize2 className="h-4 w-4" />
-                </Button>
-                <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => setModo("fechado")} title="Fechar">
+          <div className="flex h-full min-h-0 relative">
+            {historicoMobile && (
+              <div
+                className="absolute inset-0 z-20 bg-background/80 backdrop-blur-sm md:hidden"
+                onClick={() => setHistoricoMobile(false)}
+              />
+            )}
+            <aside
+              className={`${historicoMobile ? "flex absolute z-30 inset-y-0 left-0 w-72 shadow-2xl md:static md:shadow-none" : "hidden"} md:flex md:w-64 border-r flex-col min-h-0 shrink-0 bg-background`}
+            >
+              <div className="p-3 border-b flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-sm font-bold">
+                  <Avatar11 size={26} className="rounded-full" /> Histórico
+                </span>
+                <button
+                  type="button"
+                  className="md:hidden rounded p-1 text-muted-foreground hover:text-foreground cursor-pointer"
+                  onClick={() => setHistoricoMobile(false)}
+                >
                   <X className="h-4 w-4" />
-                </Button>
+                </button>
               </div>
-            </div>
-            <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)} className="flex-1 flex flex-col min-h-0">
-              <TabsContent value="chat" className="flex-1 min-h-0 mt-0 flex flex-col data-[state=active]:flex">
-                {listaMensagens}
-                {barraEntrada}
-              </TabsContent>
-              <TabsContent value="dev" className="flex-1 min-h-0 mt-0 overflow-y-auto">
-                <div className="p-4 space-y-3 max-w-2xl mx-auto">
-                  <p className="text-sm text-muted-foreground">
-                    Sugestões capturadas pela 11 na conversa. Copie o prompt técnico e cole no Open Code.
-                  </p>
-                  {melhorias.length === 0 && (
-                    <p className="text-sm text-muted-foreground py-8 text-center">
-                      Nenhuma melhoria registrada ainda.
-                    </p>
-                  )}
-                  {melhorias.map((m) => (
-                    <div key={m.id} className="rounded-xl border p-3 space-y-2">
-                      <div className="flex items-start justify-between gap-2 flex-wrap">
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">{m.original_feedback}</p>
-                          <p className="text-[11px] text-muted-foreground">
-                            por {m.requested_by} · {new Date(m.created_at).toLocaleString("pt-BR")}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <Badge variant="outline" className={`text-[10px] ${CORES_STATUS[m.status] ?? ""}`}>
-                            {m.status.replace("_", " ")}
-                          </Badge>
-                          {ehAdmin && (
-                            <select
-                              value={m.status}
-                              onChange={(e) => void mudarStatus(m.id, e.target.value)}
-                              className="text-[11px] rounded-md border bg-background px-1.5 py-1 cursor-pointer"
-                            >
-                              <option value="pendente">pendente</option>
-                              <option value="em_andamento">em andamento</option>
-                              <option value="feito">feito</option>
-                              <option value="rejeitado">rejeitado</option>
-                            </select>
-                          )}
-                        </div>
-                      </div>
-                      <pre className="text-[11px] bg-muted/50 rounded-lg p-2.5 overflow-x-auto max-h-44 whitespace-pre-wrap break-words">
-                        {m.generated_prompt}
-                      </pre>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={() => void copiarPrompt(m)}
-                      >
-                        {copiado === m.id ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                        Copiar Prompt
-                      </Button>
-                    </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="mx-3 mt-3 gap-1.5"
+                onClick={() => {
+                  setChatAtivo(null);
+                  setMensagens([]);
+                  setAba("chat");
+                  setHistoricoMobile(false);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" /> Novo chat
+              </Button>
+              <ScrollArea className="flex-1 min-h-0">
+                <div className="p-2 space-y-1">
+                  {chats.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setChatAtivo(c.id);
+                        setAba("chat");
+                        setHistoricoMobile(false);
+                        void carregarMensagens(c.id);
+                      }}
+                      className={`w-full text-left rounded-lg px-2.5 py-2 text-sm transition-colors cursor-pointer ${
+                        chatAtivo === c.id ? "bg-accent" : "hover:bg-accent/50"
+                      }`}
+                    >
+                      <span className="block truncate font-medium">{c.title}</span>
+                      <span className="block text-[10px] text-muted-foreground truncate">por {c.created_by_user}</span>
+                    </button>
                   ))}
-                </div>
-              </TabsContent>
-              <TabsContent value="placar" className="flex-1 min-h-0 mt-0 overflow-y-auto">
-                <div className="p-4 space-y-4 max-w-2xl mx-auto">
-                  <div className="rounded-xl border p-3 space-y-2">
-                    <p className="text-sm font-semibold">Registrar palpite</p>
-                    <div className="flex flex-wrap gap-2">
-                      <select
-                        value={palpiteLoteria}
-                        onChange={(e) => setPalpiteLoteria(e.target.value)}
-                        className="text-sm rounded-lg border bg-background px-2 py-1.5 cursor-pointer"
-                      >
-                        {LOTERIAS.filter((l) => l.ativo).map((l) => (
-                          <option key={l.slug} value={l.slug}>{l.nome}</option>
-                        ))}
-                      </select>
-                      <input
-                        value={palpiteDezenas}
-                        onChange={(e) => setPalpiteDezenas(e.target.value)}
-                        placeholder="dezenas: 4, 12, 23, 34, 45, 56"
-                        className="flex-1 min-w-[12rem] h-9 text-sm rounded-lg border bg-background px-2"
-                      />
-                      <Button
-                        type="button"
-                        size="sm"
-                        onClick={() => void enviarPalpite()}
-                        disabled={enviandoPalpite}
-                        className="gap-1.5"
-                      >
-                        {enviandoPalpite ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                        Apostar palpite
-                      </Button>
-                    </div>
-                  </div>
-                  {ranking.length === 0 ? (
-                    <p className="text-sm text-muted-foreground py-8 text-center">Nenhum palpite registrado.</p>
-                  ) : (
-                    <div className="rounded-xl border overflow-hidden">
-                      <table className="w-full text-sm">
-                        <thead className="bg-muted/50 text-xs text-muted-foreground">
-                          <tr>
-                            <th className="text-left px-3 py-2">#</th>
-                            <th className="text-left px-3 py-2">Membro</th>
-                            <th className="text-right px-3 py-2">Acertos</th>
-                            <th className="text-right px-3 py-2">Melhor</th>
-                            <th className="text-right px-3 py-2">Palpites</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {ranking.map((r, i) => (
-                            <tr key={r.user_name} className="border-t">
-                              <td className="px-3 py-2 font-bold">{i + 1}º</td>
-                              <td className="px-3 py-2">{r.user_name}</td>
-                              <td className="px-3 py-2 text-right font-bold tabular-nums">{r.total_acertos}</td>
-                              <td className="px-3 py-2 text-right tabular-nums">{r.melhor_acerto}</td>
-                              <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">{r.total_palpites}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                  {chats.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-4">Nenhum chat ainda</p>
                   )}
                 </div>
-              </TabsContent>
-            </Tabs>
+              </ScrollArea>
+            </aside>
+            <div className="flex-1 min-w-0 flex flex-col min-h-0">
+              <Tabs value={aba} onValueChange={(v) => setAba(v as Aba)} className="flex-1 flex flex-col min-h-0">
+                <div className="border-b px-2 sm:px-3 flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1 min-w-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 md:hidden"
+                      onClick={() => setHistoricoMobile(true)}
+                      title="Histórico de chats"
+                    >
+                      <Menu className="h-4 w-4" />
+                    </Button>
+                    <TabsList className="my-2 h-9">
+                      <TabsTrigger value="chat" className="gap-1.5 text-xs px-2.5">
+                        <MessageCircle className="h-3.5 w-3.5" /> Chat
+                      </TabsTrigger>
+                      <TabsTrigger value="dev" className="gap-1.5 text-xs px-2.5">
+                        <Wrench className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Central do Dev</span>
+                        <span className="sm:hidden">Dev</span>
+                      </TabsTrigger>
+                      <TabsTrigger value="placar" className="gap-1.5 text-xs px-2.5">
+                        <Trophy className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Placar</span>
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setModo("compacto")}
+                      title="Minimizar"
+                    >
+                      <Minimize2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setModo("fechado")}
+                      title="Fechar"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <TabsContent value="chat" className="flex-1 min-h-0 mt-0 flex flex-col data-[state=active]:flex">
+                  {listaMensagens}
+                  {barraEntrada}
+                </TabsContent>
+                <TabsContent value="dev" className="flex-1 min-h-0 mt-0 overflow-y-auto">
+                  <div className="p-4 space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Sugestões capturadas pela 11 na conversa. Copie o prompt técnico e cole no Open Code.
+                    </p>
+                    {melhorias.length === 0 && (
+                      <p className="text-sm text-muted-foreground py-8 text-center">
+                        Nenhuma melhoria registrada ainda.
+                      </p>
+                    )}
+                    {melhorias.map((m) => (
+                      <div key={m.id} className="rounded-xl border p-3 space-y-2">
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold">{m.original_feedback}</p>
+                            <p className="text-[11px] text-muted-foreground">
+                              por {m.requested_by} · {new Date(m.created_at).toLocaleString("pt-BR")}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Badge variant="outline" className={`text-[10px] ${CORES_STATUS[m.status] ?? ""}`}>
+                              {m.status.replace("_", " ")}
+                            </Badge>
+                            {ehAdmin && (
+                              <select
+                                value={m.status}
+                                onChange={(e) => void mudarStatus(m.id, e.target.value)}
+                                className="text-[11px] rounded-md border bg-background px-1.5 py-1 cursor-pointer"
+                              >
+                                <option value="pendente">pendente</option>
+                                <option value="em_andamento">em andamento</option>
+                                <option value="feito">feito</option>
+                                <option value="rejeitado">rejeitado</option>
+                              </select>
+                            )}
+                          </div>
+                        </div>
+                        <pre className="text-[11px] bg-muted/50 rounded-lg p-2.5 overflow-x-auto max-h-44 whitespace-pre-wrap break-words">
+                          {m.generated_prompt}
+                        </pre>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1.5"
+                          onClick={() => void copiarPrompt(m)}
+                        >
+                          {copiado === m.id ? <CheckCircle2 className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                          Copiar Prompt
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </TabsContent>
+                <TabsContent value="placar" className="flex-1 min-h-0 mt-0 overflow-y-auto">
+                  <div className="p-4 space-y-4">
+                    <div className="rounded-xl border p-3 space-y-2">
+                      <p className="text-sm font-semibold">Registrar palpite</p>
+                      <div className="flex flex-wrap gap-2">
+                        <select
+                          value={palpiteLoteria}
+                          onChange={(e) => setPalpiteLoteria(e.target.value)}
+                          className="text-sm rounded-lg border bg-background px-2 py-1.5 cursor-pointer"
+                        >
+                          {LOTERIAS.filter((l) => l.ativo).map((l) => (
+                            <option key={l.slug} value={l.slug}>
+                              {l.nome}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          value={palpiteDezenas}
+                          onChange={(e) => setPalpiteDezenas(e.target.value)}
+                          placeholder="dezenas: 4, 12, 23, 34, 45, 56"
+                          className="flex-1 min-w-[12rem] h-9 text-sm rounded-lg border bg-background px-2"
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => void enviarPalpite()}
+                          disabled={enviandoPalpite}
+                          className="gap-1.5"
+                        >
+                          {enviandoPalpite ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Sparkles className="h-3.5 w-3.5" />
+                          )}
+                          Apostar palpite
+                        </Button>
+                      </div>
+                    </div>
+                    {ranking.length === 0 ? (
+                      <p className="text-sm text-muted-foreground py-8 text-center">Nenhum palpite registrado.</p>
+                    ) : (
+                      <div className="rounded-xl border overflow-hidden">
+                        <table className="w-full text-sm">
+                          <thead className="bg-muted/50 text-xs text-muted-foreground">
+                            <tr>
+                              <th className="text-left px-3 py-2">#</th>
+                              <th className="text-left px-3 py-2">Membro</th>
+                              <th className="text-right px-3 py-2">Acertos</th>
+                              <th className="text-right px-3 py-2">Melhor</th>
+                              <th className="text-right px-3 py-2">Palpites</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ranking.map((r, i) => (
+                              <tr key={r.user_name} className="border-t">
+                                <td className="px-3 py-2 font-bold">{i + 1}º</td>
+                                <td className="px-3 py-2">{r.user_name}</td>
+                                <td className="px-3 py-2 text-right font-bold tabular-nums">{r.total_acertos}</td>
+                                <td className="px-3 py-2 text-right tabular-nums">{r.melhor_acerto}</td>
+                                <td className="px-3 py-2 text-right tabular-nums text-muted-foreground">
+                                  {r.total_palpites}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
@@ -728,7 +859,7 @@ export function AssistantWidget() {
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
           <span className="flex items-center gap-2 text-sm font-bold min-w-0">
             <Avatar11 size={24} className="rounded-full shrink-0" />
-            <span className="truncate">{SALA_TITULO}</span>
+            <span className="truncate">Falar com a 11</span>
           </span>
           <div className="flex items-center gap-0.5 shrink-0">
             <button

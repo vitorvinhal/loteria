@@ -39,6 +39,25 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "3.4.1",
+    date: "2026-10-10",
+    type: "patch",
+    tag: "Assistente 11 — imagens corrigidas, chats compartilhados e microfone",
+    sections: [
+      {
+        title: "Correções",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Upload da imagem gerada pela 11 usa a pasta do usuário (RLS do Storage) — geração de imagens volta a funcionar",
+          "Lista de chats compartilhados restaurada: qualquer membro abre e responde o chat de outro",
+          "Microfone com erros claros (permissão negada, navegador sem suporte, sem fala detectada)",
+          "Live chat com polling de reserva a cada 12s além do Realtime",
+        ],
+      },
+    ],
+  },
+  {
     version: "3.4.0",
     date: "2026-10-10",
     type: "minor",
