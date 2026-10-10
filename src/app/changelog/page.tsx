@@ -20,6 +20,7 @@ import {
   Trophy,
   Bot,
   Volume2,
+  Phone,
 } from "lucide-react";
 
 interface ChangelogSection {
@@ -38,6 +39,25 @@ interface ChangelogEntry {
 }
 
 const changelog: ChangelogEntry[] = [
+  {
+    version: "3.5.0",
+    date: "2026-10-10",
+    type: "minor",
+    tag: "Assistente 11 — ligação por voz ao vivo",
+    sections: [
+      {
+        title: "Ligação com a 11",
+        icon: <Phone className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Botão de telefone no chat: fala com a 11 como numa chamada de telefone",
+          "Ela ouve, responde falando (voz neural pt-BR) e volta a ouvir — em tempo real",
+          "Tela de ligação com transcrição ao vivo, tempo e botão desligar",
+          "Tudo salvo no chat (histórico em texto também)",
+        ],
+      },
+    ],
+  },
   {
     version: "3.4.2",
     date: "2026-10-10",

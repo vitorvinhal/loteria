@@ -5,6 +5,8 @@ import { useAuth, supabase } from "@/lib/supabase/auth/provider";
 import { Avatar11 } from "./avatar-11";
 import { MarkdownText } from "./markdown-text";
 import { useSpeechRecognition } from "./use-speech-recognition";
+import { useVoiceCall } from "./use-voice-call";
+import { VoiceCallPanel } from "./voice-call-panel";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +39,7 @@ import {
   Trophy,
   Wrench,
   Menu,
+  Phone,
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 
@@ -195,6 +198,30 @@ export function AssistantWidget() {
     },
     [irParaFim]
   );
+
+  const enviarLigacao = useCallback(
+    async (fala: string): Promise<string> => {
+      const res = await fetch("/api/assistant/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatAtivo, content: fala, attachments: [] }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(json?.error ?? "falha");
+      const novoId = json.chat_id as string;
+      if (novoId !== chatAtivo) setChatAtivo(novoId);
+      await carregarMensagens(novoId);
+      void carregarChats();
+      return String(json.reply ?? "");
+    },
+    [chatAtivo, carregarMensagens, carregarChats]
+  );
+
+  const ligacao = useVoiceCall({
+    enviar: enviarLigacao,
+    onFala11: () => irParaFim(),
+  });
+  const [ligacaoAberta, setLigacaoAberta] = useState(false);
 
   const carregarMelhorias = useCallback(async () => {
     try {
@@ -410,6 +437,25 @@ export function AssistantWidget() {
 
   if (isLoading || !user) return null;
 
+  const painelLigacao = (
+    <VoiceCallPanel
+      ativa={ligacaoAberta}
+      fase={ligacao.fase}
+      rotuloFase={ligacao.rotuloFase}
+      transcricao={ligacao.transcricao}
+      ultimaFala11={ligacao.ultimaFala11}
+      erro={ligacao.erro}
+      segundos={ligacao.segundos}
+      suporta={ligacao.suporta}
+      onIniciar={() => void ligacao.iniciar()}
+      onParar={() => ligacao.parar()}
+      onFechar={() => {
+        ligacao.parar();
+        setLigacaoAberta(false);
+      }}
+    />
+  );
+
   const onMic = () => {
     if (ouvindo) {
       parar();
@@ -592,6 +638,19 @@ export function AssistantWidget() {
         </Button>
         <Button
           type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 shrink-0 text-emerald-600"
+          onClick={() => {
+            setLigacaoAberta(true);
+            void ligacao.iniciar();
+          }}
+          title="Ligar para a 11 (voz ao vivo)"
+        >
+          <Phone className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
           size="icon"
           className="h-8 w-8 shrink-0 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground"
           onClick={() => void enviarMensagem(texto, anexos)}
@@ -605,6 +664,7 @@ export function AssistantWidget() {
 
   if (modo === "expandido") {
     return (
+      <>
       <Dialog open onOpenChange={(o) => { if (!o) setModo("compacto"); }}>
         <DialogContent
           showCloseButton={false}
@@ -862,11 +922,14 @@ export function AssistantWidget() {
           </div>
         </DialogContent>
       </Dialog>
-    );
-  }
+      {painelLigacao}
+    </>
+  );
+}
 
   if (modo === "compacto") {
     return (
+      <>
       <div className="fixed bottom-0 left-0 right-0 z-[60] w-full h-[85vh] sm:bottom-4 sm:left-4 sm:right-auto sm:w-[24rem] sm:max-w-[calc(100vw-2rem)] sm:h-[28rem] sm:max-h-[calc(100vh-6rem)] rounded-t-2xl sm:rounded-xl border bg-card shadow-xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2.5">
           <span className="flex items-center gap-2 text-sm font-bold min-w-0">
@@ -895,10 +958,13 @@ export function AssistantWidget() {
         {listaMensagens}
         {barraEntrada}
       </div>
+      {painelLigacao}
+      </>
     );
   }
 
   return (
+    <>
     <button
       type="button"
       onClick={() => setModo("compacto")}
@@ -907,5 +973,7 @@ export function AssistantWidget() {
       <Avatar11 size={22} className="rounded-full" />
       Falar com a 11
     </button>
+    {painelLigacao}
+    </>
   );
 }
