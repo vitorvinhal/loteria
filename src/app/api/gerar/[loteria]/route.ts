@@ -119,6 +119,9 @@ export async function POST(
     if (!estrategias || !Array.isArray(estrategias) || estrategias.length === 0 || quantidade < 1 || quantidade > 250) {
       return NextResponse.json({ error: "Parâmetros inválidos" }, { status: 400 });
     }
+    if (!getEstrategiaPorSlug(estrategias[0])) {
+      return NextResponse.json({ error: "Estratégia inválida" }, { status: 400 });
+    }
 
     const user = await getUser();
     const usuarioId = user?.id ?? null;

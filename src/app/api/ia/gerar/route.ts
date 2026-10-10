@@ -7,6 +7,7 @@ import {
   buscarEstatisticasReais,
   chamarModeloIA,
   montarMensagensIA,
+  resolverConfigIA,
   validarJogosIA,
   LIMITE_JOGOS_IA,
   topFrequencias,
@@ -48,9 +49,15 @@ export async function POST(request: NextRequest) {
         ? qtd_dezenas
         : loteria.qtd_dezenas_padrao;
 
-    if (!process.env.AIMODEL_API_KEY?.trim()) {
+    try {
+      await resolverConfigIA();
+    } catch (e) {
+      const motivo = e instanceof Error ? e.message : String(e);
       return NextResponse.json(
-        { error: "Geração por IA não configurada no servidor (AIMODEL_API_KEY).", code: "ia_sem_chave" },
+        {
+          error: `Geração por IA não configurada no servidor (${motivo}).`,
+          code: "ia_sem_chave",
+        },
         { status: 503 }
       );
     }
@@ -60,7 +67,11 @@ export async function POST(request: NextRequest) {
     const regra = obterRegra(loteria);
 
     const slugEstrategia = Array.isArray(estrategias) && estrategias.length ? estrategias[0] : undefined;
-    const estrategiaConfig = slugEstrategia ? getEstrategiaPorSlug(slugEstrategia) : undefined;
+    const estrategiaEscolhida = slugEstrategia ? getEstrategiaPorSlug(slugEstrategia) : undefined;
+    if (slugEstrategia && !estrategiaEscolhida) {
+      return NextResponse.json({ error: "Estratégia inválida" }, { status: 400 });
+    }
+    const estrategiaConfig = estrategiaEscolhida ?? getEstrategiaPorSlug("hibrida_ia");
     const qtdPedida = Math.min(quantidade, LIMITE_JOGOS_IA);
 
     let fonte: "ia" | "motor-local" = "ia";
@@ -114,7 +125,7 @@ export async function POST(request: NextRequest) {
 
     const { loteId } = await salvarLoteGeracao({
       loteria,
-      estrategiaId: estrategiaConfig?.id || null,
+      estrategiaId: estrategiaConfig?.id ?? "hibrida_ia",
       scoreMinimo: score_minimo,
       quantidadeSolicitada: quantidade,
       tempoExecucaoMs: tempoExecucao,

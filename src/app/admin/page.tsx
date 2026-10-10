@@ -5,8 +5,17 @@ import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/lib/supabase/auth/provider";
-import { ShieldCheck, Trash2, Users, History, RefreshCw, ArrowLeft, User } from "lucide-react";
+import { ShieldCheck, Trash2, Users, History, RefreshCw, ArrowLeft, User, Bot, Zap } from "lucide-react";
 
 interface AdminLote {
   id: string;
@@ -26,6 +35,25 @@ interface AdminUsuario {
   camuflagemAtiva: boolean;
 }
 
+interface ProviderIAInfo {
+  id: string;
+  nome: string;
+  baseUrl: string;
+  modeloPadrao: string;
+  modelosSugeridos: string[];
+  envKey: string;
+  comoObter: string;
+}
+
+interface ConfigIADados {
+  provider: string;
+  model: string;
+  base_url: string | null;
+  atualizado_em: string | null;
+  chaves: Record<string, boolean>;
+  providers: ProviderIAInfo[];
+}
+
 export default function AdminPage() {
   const { user, isLoading } = useAuth();
   const router = useRouter();
@@ -35,6 +63,67 @@ export default function AdminPage() {
   const [carregando, setCarregando] = useState(true);
   const [excluindo, setExcluindo] = useState<string | null>(null);
   const [salvandoCamuflagem, setSalvandoCamuflagem] = useState<string | null>(null);
+  const [configIA, setConfigIA] = useState<ConfigIADados | null>(null);
+  const [iaProvider, setIaProvider] = useState("groq");
+  const [iaModelo, setIaModelo] = useState("");
+  const [iaAcao, setIaAcao] = useState<"salvar" | "testar" | null>(null);
+  const [iaMensagem, setIaMensagem] = useState<{ tipo: "ok" | "erro"; texto: string } | null>(null);
+
+  const carregarConfigIA = async () => {
+    try {
+      const res = await fetch("/api/admin/config-ia");
+      if (!res.ok) return;
+      const d = (await res.json()) as ConfigIADados;
+      setConfigIA(d);
+      setIaProvider(d.provider);
+      setIaModelo(d.model);
+    } catch (e) {
+      console.error("Erro ao carregar config de IA:", e);
+    }
+  };
+
+  const salvarConfigIA = async () => {
+    setIaAcao("salvar");
+    setIaMensagem(null);
+    try {
+      const res = await fetch("/api/admin/config-ia", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provider: iaProvider, model: iaModelo }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setIaMensagem({ tipo: "erro", texto: d.error || "Erro ao salvar." });
+        return;
+      }
+      setIaMensagem({ tipo: "ok", texto: `Salvo: ${d.provider} · ${d.model}` });
+      await carregarConfigIA();
+    } catch (e) {
+      console.error("Erro ao salvar config IA:", e);
+      setIaMensagem({ tipo: "erro", texto: "Erro de rede ao salvar." });
+    } finally {
+      setIaAcao(null);
+    }
+  };
+
+  const testarConfigIA = async () => {
+    setIaAcao("testar");
+    setIaMensagem(null);
+    try {
+      const res = await fetch("/api/admin/config-ia", { method: "POST" });
+      const d = await res.json();
+      if (res.ok && d.ok) {
+        setIaMensagem({ tipo: "ok", texto: `Modelo respondeu em ${d.latencia_ms} ms.` });
+      } else {
+        setIaMensagem({ tipo: "erro", texto: d.erro || "Teste falhou." });
+      }
+    } catch (e) {
+      console.error("Erro ao testar config IA:", e);
+      setIaMensagem({ tipo: "erro", texto: "Erro de rede no teste." });
+    } finally {
+      setIaAcao(null);
+    }
+  };
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -96,6 +185,10 @@ export default function AdminPage() {
   useEffect(() => {
     if (user) carregar();
   }, [user]);
+
+  useEffect(() => {
+    if (isAdmin) carregarConfigIA();
+  }, [isAdmin]);
 
   const excluir = async (id: string) => {
     if (!confirm("Excluir este lote do histórico?")) return;
@@ -240,6 +333,102 @@ export default function AdminPage() {
                   </Button>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {configIA && (
+        <div className="mb-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Bot className="h-5 w-5" />
+                IA — Provedor de Geração
+              </CardTitle>
+              <CardDescription>
+                Define qual provedor de IA gera os jogos quando o usuário ativa a opção de IA.
+                As chaves ficam só no servidor (Vercel/env) — aqui aparece só se cada uma existe.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label>Provedor</Label>
+                  <Select value={iaProvider} onValueChange={(v) => v && setIaProvider(v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Provedor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {configIA.providers.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.nome}
+                          {configIA.chaves[p.id] ? "" : " (sem chave)"}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="ia-modelo">Modelo</Label>
+                  <Input
+                    id="ia-modelo"
+                    value={iaModelo}
+                    onChange={(e) => setIaModelo(e.target.value)}
+                    placeholder={configIA.providers.find((p) => p.id === iaProvider)?.modeloPadrao}
+                    list="ia-modelos-sugeridos"
+                  />
+                  <datalist id="ia-modelos-sugeridos">
+                    {configIA.providers
+                      .find((p) => p.id === iaProvider)
+                      ?.modelosSugeridos.map((m) => (
+                        <option key={m} value={m} />
+                      ))}
+                  </datalist>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                {configIA.providers.map((p) => (
+                  <Badge key={p.id} variant={configIA.chaves[p.id] ? "default" : "outline"}>
+                    {p.nome}: {configIA.chaves[p.id] ? "chave configurada" : `sem ${p.envKey}`}
+                  </Badge>
+                ))}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Endpoint: {configIA.providers.find((p) => p.id === iaProvider)?.baseUrl} ·
+                Chaves em: {configIA.providers.find((p) => p.id === iaProvider)?.comoObter}
+                {configIA.atualizado_em &&
+                  ` · última alteração ${new Date(configIA.atualizado_em).toLocaleString("pt-BR")}`}
+              </p>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" onClick={salvarConfigIA} disabled={iaAcao !== null}>
+                  {iaAcao === "salvar" ? <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" /> : null}
+                  Salvar
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={testarConfigIA}
+                  disabled={iaAcao !== null}
+                >
+                  {iaAcao === "testar" ? (
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin mr-1.5" />
+                  ) : (
+                    <Zap className="h-3.5 w-3.5 mr-1.5" />
+                  )}
+                  Testar conexão
+                </Button>
+                {iaMensagem && (
+                  <span
+                    className={`text-xs ${iaMensagem.tipo === "ok" ? "text-primary" : "text-destructive"}`}
+                  >
+                    {iaMensagem.texto}
+                  </span>
+                )}
+              </div>
             </CardContent>
           </Card>
         </div>

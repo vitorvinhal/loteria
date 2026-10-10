@@ -1,5 +1,6 @@
 import type { Loteria } from "@/types";
 import type { JogoSorteado } from "@/modules/lottery";
+import { resolverConfigIA } from "./provider";
 
 /** Teto de jogos por chamada de IA (controle de custo/latência). */
 export const LIMITE_JOGOS_IA = 50;
@@ -170,25 +171,23 @@ export function validarJogosIA(
 
 /**
  * Chama o modelo (OpenAI-compatible) e devolve o conteúdo JSON já limpo.
- * Sem AIMODEL_API_KEY lança erro — o chamador decide o fallback.
+ * Provider/modelo/chave vêm de resolverConfigIA() (painel admin > env > Groq).
+ * Sem nenhuma configuração lança erro — o chamador decide o fallback.
  */
 export async function chamarModeloIA(mensagens: MensagensIA): Promise<string> {
-  const chave = process.env.AIMODEL_API_KEY?.trim();
-  if (!chave) throw new Error('AIMODEL_API_KEY não configurada');
-  const base = (process.env.AIMODEL_BASE_URL?.trim() || 'https://openrouter.ai/api/v1').replace(/\/+$/, '');
-  const modelo = process.env.AIMODEL_MODEL?.trim() || 'xiaomi/mimo-v2.6-flash';
+  const cfg = await resolverConfigIA();
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_IA_MS);
   try {
-    const res = await fetch(`${base}/chat/completions`, {
+    const res = await fetch(`${cfg.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${chave}`,
+        Authorization: `Bearer ${cfg.apiKey}`,
       },
       body: JSON.stringify({
-        model: modelo,
+        model: cfg.modelo,
         messages: [
           { role: 'system', content: mensagens.system },
           { role: 'user', content: mensagens.user },
