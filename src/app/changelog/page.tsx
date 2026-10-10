@@ -34,6 +34,46 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "3.1.0",
+    date: "2026-10-10",
+    type: "minor",
+    tag: "IA multi-provedor com fallback automático + Painel admin",
+    sections: [
+      {
+        title: "Geração por IA",
+        icon: <Zap className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "4 provedores de IA: Groq, NVIDIA NIM, APInex e Agnes AI",
+          "Fallback automático: se a API ativa esgotar limite ou saldo (429/402/403), a próxima assume sozinha",
+          "Cooldown automático por provedor (5 min em 429, 30 min em saldo esgotado)",
+          "Endpoint NVIDIA NIM corrigido para integrate.api.nvidia.com",
+        ],
+      },
+      {
+        title: "Painel Admin",
+        icon: <Layout className="w-5 h-5" />,
+        color: "text-blue-500",
+        items: [
+          "Card 'IA — Provedor de Geração' em /admin com provedor ativo, chaves e última alteração",
+          "Botão Testar por provedor com resultado individual (latência ou erro)",
+          "Badge 'em cooldown' para provedores temporariamente suspenso",
+          "Configuração da IA salva no banco (tabela config_ia)",
+        ],
+      },
+      {
+        title: "Correções",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+        color: "text-rose-500",
+        items: [
+          "Provedor B.AI removido da cadeia (conta sem saldo)",
+          "Chave APInex antiga inválida substituída",
+          "87 testes passando, incluindo a cadeia de fallback da IA",
+        ],
+      },
+    ],
+  },
+  {
     version: "3.0.0",
     date: "2026-10-09",
     type: "major",
