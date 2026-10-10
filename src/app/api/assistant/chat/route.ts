@@ -63,13 +63,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Mensagem muito longa (máx. 4000 caracteres)" }, { status: 400 });
     }
 
-    const userName = nomeAmigavel(session.user);
     const supabase = await getSupabaseWithAuth();
-    const uid = session.user.id;
-    const avatar =
-      typeof session.user.user_metadata?.avatar_url === "string"
-        ? session.user.user_metadata.avatar_url
-        : null;
+    const { data: userData } = await supabase.auth.getUser();
+    const freshUser = userData.user ?? session.user;
+    const userName = nomeAmigavel(freshUser);
+    const uid = freshUser.id;
+    const { data: fotoRow } = await supabase
+      .from("perfil_foto")
+      .select("avatar_base64")
+      .eq("usuario_id", uid)
+      .maybeSingle();
+    const avatar = fotoRow?.avatar_base64 || null;
 
     let chatAtual = chatId;
     if (!chatAtual) {

@@ -68,8 +68,9 @@ export async function POST(req: NextRequest) {
     const concurso = await ultimoConcurso(loteria.slug);
     const hits = concurso ? contarAcertos(numbers, concurso.dezenas) : null;
 
-    const userName = nomeAmigavel(session.user);
     const supabase = await getSupabaseWithAuth();
+    const { data: userData } = await supabase.auth.getUser();
+    const userName = nomeAmigavel(userData.user ?? session.user);
     const { data, error } = await supabase
       .from("lottery_scores")
       .insert({

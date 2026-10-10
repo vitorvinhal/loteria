@@ -112,7 +112,7 @@ function AvatarHumano({ nome, url, size = 28 }: { nome: string; url?: string | n
 }
 
 export function AssistantWidget() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, avatarUrl } = useAuth();
   const [modo, setModo] = useState<Modo>("fechado");
   const [aba, setAba] = useState<Aba>("chat");
   const [chats, setChats] = useState<Chat[]>([]);
@@ -136,6 +136,16 @@ export function AssistantWidget() {
   const { suporta, ouvindo, transcricao, iniciar, parar } = useSpeechRecognition();
 
   const ehAdmin = isAdminUser(user);
+  const nomeUsuario = (() => {
+    const meta = user?.user_metadata;
+    const nome = meta?.nome || meta?.name || meta?.full_name;
+    if (typeof nome === "string" && nome.trim()) return nome.trim();
+    if (user?.email) {
+      const base = user.email.split("@")[0];
+      return base.charAt(0).toUpperCase() + base.slice(1);
+    }
+    return "Você";
+  })();
 
   const irParaFim = useCallback(() => {
     requestAnimationFrame(() => {
@@ -209,8 +219,8 @@ export function AssistantWidget() {
       const otimista: Msg = {
         id: `tmp-${Date.now()}`,
         user_id: user?.id ?? null,
-        user_name: user?.email?.split("@")[0] ?? "Você",
-        user_avatar: null,
+        user_name: nomeUsuario,
+        user_avatar: avatarUrl,
         content: conteudo,
         attachments: listaAnexos,
         created_at: new Date().toISOString(),
@@ -223,7 +233,7 @@ export function AssistantWidget() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chat_id: chatAtivo, content: conteudo, attachments: listaAnexos }),
         });
-        const json = (await res.json()).catch(() => null);
+        const json = await res.json().catch(() => null);
         if (!res.ok) {
           toast.error(json?.error ?? "Erro ao enviar mensagem");
           return;
@@ -239,7 +249,7 @@ export function AssistantWidget() {
         setEnviando(false);
       }
     },
-    [chatAtivo, enviando, user, irParaFim, carregarMensagens, carregarChats]
+    [chatAtivo, enviando, user, nomeUsuario, avatarUrl, irParaFim, carregarMensagens, carregarChats]
   );
 
   const falar = useCallback(async (id: string, conteudo: string) => {
@@ -267,7 +277,7 @@ export function AssistantWidget() {
         const form = new FormData();
         form.append("arquivo", file);
         const res = await fetch("/api/assistant/upload", { method: "POST", body: form });
-        const json = (await res.json()).catch(() => null);
+        const json = await res.json().catch(() => null);
         if (!res.ok) {
           toast.error(json?.error ?? "Erro no upload");
           return;
@@ -301,7 +311,7 @@ export function AssistantWidget() {
         body: JSON.stringify({ id, status }),
       });
       if (!res.ok) {
-        const json = (await res.json()).catch(() => null);
+        const json = await res.json().catch(() => null);
         toast.error(json?.error ?? "Erro ao atualizar");
         return;
       }
@@ -327,7 +337,7 @@ export function AssistantWidget() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ game_type: palpiteLoteria, numbers: nums }),
       });
-      const json = (await res.json()).catch(() => null);
+      const json = await res.json().catch(() => null);
       if (!res.ok) {
         toast.error(json?.error ?? "Erro ao registrar palpite");
         return;
@@ -535,7 +545,7 @@ export function AssistantWidget() {
             <DialogDescription>Chat colaborativo, central de melhorias e placar</DialogDescription>
           </DialogHeader>
           <div className="flex h-full min-h-0">
-            <aside className="w-64 border-r flex flex-col min-h-0 shrink-0">
+            <aside className="hidden md:flex w-64 border-r flex-col min-h-0 shrink-0">
               <div className="p-3 border-b flex items-center justify-between gap-2">
                 <span className="flex items-center gap-2 text-sm font-bold">
                   <Avatar11 size={26} className="rounded-full" /> 11
@@ -740,7 +750,7 @@ export function AssistantWidget() {
 
   if (modo === "compacto") {
     return (
-      <div className="fixed bottom-4 left-4 z-[60] w-[22rem] max-w-[calc(100vw-2rem)] h-[26rem] max-h-[calc(100vh-6rem)] rounded-xl border border-fuchsia-500/30 bg-card shadow-xl flex flex-col overflow-hidden">
+      <div className="fixed bottom-0 left-0 right-0 z-[60] w-full h-[85vh] sm:bottom-4 sm:left-4 sm:right-auto sm:w-[22rem] sm:max-w-[calc(100vw-2rem)] sm:h-[26rem] sm:max-h-[calc(100vh-6rem)] rounded-t-2xl sm:rounded-xl border border-fuchsia-500/30 bg-card shadow-xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between gap-2 border-b px-3 py-2 bg-fuchsia-500/5">
           <span className="flex items-center gap-2 text-sm font-bold">
             <Avatar11 size={24} className="rounded-full" />

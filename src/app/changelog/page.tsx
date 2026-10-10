@@ -15,6 +15,11 @@ import {
   Users,
   ShieldCheck,
   GitCompare,
+  MessageCircle,
+  Wrench,
+  Trophy,
+  Bot,
+  Volume2,
 } from "lucide-react";
 
 interface ChangelogSection {
@@ -33,6 +38,80 @@ interface ChangelogEntry {
 }
 
 const changelog: ChangelogEntry[] = [
+  {
+    version: "3.3.0",
+    date: "2026-10-10",
+    type: "minor",
+    tag: "Assistente 11 — chat colaborativo, voz, Central do Dev e Placar",
+    sections: [
+      {
+        title: "Assistente 11 (widget flutuante)",
+        icon: <MessageCircle className="w-5 h-5" />,
+        color: "text-fuchsia-500",
+        items: [
+          'Botão "Falar com a 11" no canto inferior esquerdo de todo o site (usuários logados)',
+          "Avatar SVG próprio da 11 (círculo neon azul/roxo) no botão, no chat e nas mensagens",
+          'Janela compacta para perguntas rápidas + botão Maximizar estilo janela (workspace amplo)',
+          "Identidade da 11 no System Prompt com o nome do usuário logado — respostas personalizadas",
+          "Backend na cadeia de provedores da 11 (fallback automático), com suporte a imagens anexadas",
+        ],
+      },
+      {
+        title: "Chat colaborativo",
+        icon: <Bot className="w-5 h-5" />,
+        color: "text-blue-500",
+        items: [
+          "Sidebar com TODOS os chats criados por qualquer usuário (Vitor, Giovanna...), com autor e título",
+          "Mensagens em estilo grupo: avatar e nome de quem enviou (humano ou a 11)",
+          "Upload de imagens e PDFs por mensagem (Supabase Storage, máx. 10MB)",
+          "Histórico carregado por chat com atualização automática",
+        ],
+      },
+      {
+        title: "Voz 100% gratuita e ilimitada",
+        icon: <Volume2 className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Microfone no campo de texto (Web Speech API nativa, pt-BR) transcrevendo a fala em tempo real",
+          "Rota /api/tts com voz neural pt-BR-FranciscaNeural (Edge TTS, sem chave de API)",
+          'Botão "Ouvir" em cada resposta da 11 reproduzindo áudio MP3 fluido',
+        ],
+      },
+      {
+        title: "Central de Melhorias (Central do Dev)",
+        icon: <Wrench className="w-5 h-5" />,
+        color: "text-amber-500",
+        items: [
+          "Diante de um feedback/reclamação, a 11 pergunta se deve anotar para o Vitor",
+          "Confirmação convertida em PROMPT TÉCNICO COMPLETO (componentes, Tailwind e lógica)",
+          "Registro salvo na tabela site_improvements do Supabase",
+          'Aba "Central do Dev" no workspace com cards de cada melhoria e botão "Copiar Prompt"',
+          "Admin altera status (pendente / em andamento / feito / rejeitado) — bloqueado por RLS e rota",
+        ],
+      },
+      {
+        title: "Placar de Acertos (ranking da galera)",
+        icon: <Trophy className="w-5 h-5" />,
+        color: "text-cyan-500",
+        items: [
+          "Tabela lottery_scores: palpites de cada membro (Vitor, Giovanna ou 11)",
+          "Conferência automática dos acertos contra o último concurso oficial da loteria",
+          "Ranking por total de acertos, melhor resultado e quantidade de palpites",
+          "Formulário para registrar palpite rápido no workspace",
+        ],
+      },
+      {
+        title: "Banco de dados e segurança",
+        icon: <ShieldCheck className="w-5 h-5" />,
+        color: "text-purple-500",
+        items: [
+          "Tabelas chats, messages, site_improvements e lottery_scores com RLS",
+          "Leitura compartilhada apenas entre usuários logados — anônimos não acessam nada",
+          "Escrita sempre via sessão autenticada (auth.uid); bucket assistant-attachments no Storage",
+        ],
+      },
+    ],
+  },
   {
     version: "3.2.0",
     date: "2026-10-10",
