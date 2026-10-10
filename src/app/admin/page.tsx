@@ -372,10 +372,10 @@ export default function AdminPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Bot className="h-5 w-5" />
-                IA — Provedor de Geração
+                11 — Provedor de Geração
               </CardTitle>
               <CardDescription>
-                Define qual provedor de IA gera os jogos. Se a API ativa esgotar limite ou saldo,
+                Define qual provedor a 11 usa para gerar os jogos. Se a API ativa esgotar limite ou saldo,
                 o sistema tenta a próxima sozinho (fallback automático). As chaves ficam só no
                 servidor (Vercel/env) — aqui aparece só se cada uma existe.
               </CardDescription>
@@ -392,7 +392,7 @@ export default function AdminPage() {
                 </p>
               ) : (
                 <p className="text-xs text-destructive">
-                  Nenhuma IA configurada no servidor — geração por IA desativada.
+                  Nenhuma provedora configurada no servidor — a 11 está desativada.
                 </p>
               )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

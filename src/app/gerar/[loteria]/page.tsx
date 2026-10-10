@@ -185,7 +185,7 @@ export default function GerarPage() {
         const data = await response.json().catch(() => ({}) as Record<string, unknown>);
         if (data.code === "ia_sem_chave") {
           setFonteGeracao("motor-local");
-          setAvisoIA("IA não configurada no servidor — jogos gerados pelo motor local.");
+          setAvisoIA("A 11 não está configurada no servidor — jogos gerados pelo motor local.");
           response = await fetch(`/api/gerar/${slug}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -502,7 +502,7 @@ export default function GerarPage() {
                 <div className="flex items-start gap-2 min-w-0">
                   <Brain className="h-4 w-4 mt-0.5 text-fuchsia-500 shrink-0" />
                   <div className="min-w-0">
-                    <span className="text-sm font-semibold block">Otimizar e Validar Jogos com IA</span>
+                    <span className="text-sm font-semibold block">Otimizar com a 11</span>
                     <span className="text-xs text-muted-foreground">
                       Groq · NVIDIA · APInex · Agnes (fallback automático) · até 50 jogos · validados pelo motor
                     </span>
@@ -512,7 +512,7 @@ export default function GerarPage() {
                   type="button"
                   role="switch"
                   aria-checked={usarIA}
-                  aria-label="Gerar com IA"
+                  aria-label="Otimizar com a 11"
                   onClick={() => {
                     const proximo = !usarIA;
                     setUsarIA(proximo);
@@ -572,7 +572,7 @@ export default function GerarPage() {
                   <div className="flex items-center justify-between text-sm">
                     <span className="font-semibold">
                       {fonteGeracao === "ia"
-                        ? `${resultadoGeracao.totalGerados} de ${resultadoGeracao.totalSolicitado} jogo(s) gerados pela IA`
+                        ? `${resultadoGeracao.totalGerados} de ${resultadoGeracao.totalSolicitado} jogo(s) gerados pela 11`
                         : `${resultadoGeracao.totalGerados} de ${resultadoGeracao.totalSolicitado} jogo(s) com score ≥ ${scoreMinimo}`}
                     </span>
                     <Badge variant="outline" className="text-xs">
@@ -587,7 +587,7 @@ export default function GerarPage() {
                   </div>
                   {fonteGeracao === "ia" ? (
                     <p className="text-xs text-emerald-600">
-                      Jogos propostos pela IA (multi-provedor) e validados um a um pelo motor oficial. O score mínimo não filtra a geração por IA — os scores são informativos.
+                      Jogos propostos pela 11 (multi-provedor) e validados um a um pelo motor oficial. O score mínimo não filtra a geração pela 11 — os scores são informativos.
                     </p>
                   ) : resultadoGeracao.relaxado ? (
                     <p className="text-xs text-amber-600">
@@ -628,7 +628,7 @@ export default function GerarPage() {
                     {jogosGerados.length}
                   </Badge>
                   {fonteGeracao === "ia" && (
-                    <Badge className="bg-fuchsia-500 text-white border-0">IA</Badge>
+                    <Badge className="bg-fuchsia-500 text-white border-0">11</Badge>
                   )}
                 </h2>
                 <span className="text-xs text-muted-foreground">{jogosExpandidos ? "▲ Retrair" : "▼ Expandir"}</span>
@@ -771,13 +771,13 @@ export default function GerarPage() {
                           <div className="flex items-start gap-2 rounded-lg border border-fuchsia-500/20 bg-fuchsia-500/5 p-2">
                             <Sparkles className="h-3.5 w-3.5 text-fuchsia-500 mt-0.5 shrink-0" />
                             <p className="text-xs leading-snug">
-                              <span className="font-semibold">Análise da IA: </span>
+                              <span className="font-semibold">Análise da 11: </span>
                               {jogo.analise_ia}
                             </p>
                           </div>
                         ) : (
                           <p className="text-xs text-muted-foreground">
-                            Gerado pelo motor local — sem análise textual da IA.
+                            Gerado pelo motor local — sem análise textual da 11.
                           </p>
                         )}
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

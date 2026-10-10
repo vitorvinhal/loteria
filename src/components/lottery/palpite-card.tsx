@@ -89,7 +89,7 @@ export function PalpiteCard({ slug }: { slug: string }) {
       <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
         <span className="flex items-center gap-2 text-sm font-bold">
           <Sparkles className="h-4 w-4 text-fuchsia-500" />
-          Palpite Forte da IA
+          Palpite Forte da 11
         </span>
         <div className="flex items-center gap-1">
           <button
