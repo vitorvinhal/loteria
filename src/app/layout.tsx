@@ -8,6 +8,7 @@ import { Footer } from "@/components/layout/footer";
 import { VersionBadge } from "@/components/layout/version-badge";
 import { AuthProvider } from "@/lib/supabase/auth/provider";
 import { AuthGuard } from "@/components/layout/auth-guard";
+import { AssistantWidget } from "@/components/assistant/assistant-widget";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -62,6 +63,7 @@ export default function RootLayout({
             </div>
             <Toaster />
             <VersionBadge />
+            <AssistantWidget />
             </AuthGuard>
           </TooltipProvider>
         </AuthProvider>
