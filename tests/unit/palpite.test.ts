@@ -49,10 +49,14 @@ describe("gerarPalpiteForte", () => {
     expect(p.metricas.pares + p.metricas.impares).toBe(p.dezenas.length);
   });
 
-  it("é determinístico para as mesmas estatísticas", () => {
+  it("varia entre chamadas (não é sempre o mesmo palpite)", () => {
     const l = loteria("quina");
     const s = statsFake(l);
-    expect(gerarPalpiteForte(l, s).dezenas).toEqual(gerarPalpiteForte(l, s).dezenas);
+    const amostras = new Set<string>();
+    for (let i = 0; i < 12; i++) {
+      amostras.add(gerarPalpiteForte(l, s).dezenas.join(","));
+    }
+    expect(amostras.size).toBeGreaterThan(1);
   });
 
   it("no Super Sete gera colunas posicionais (1 dígito por coluna)", () => {

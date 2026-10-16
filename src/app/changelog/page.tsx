@@ -40,6 +40,23 @@ interface ChangelogEntry {
 
 const changelog: ChangelogEntry[] = [
   {
+    version: "3.5.1",
+    date: "2026-10-10",
+    type: "patch",
+    tag: "Palpite Forte agora varia a cada recálculo",
+    sections: [
+      {
+        title: "Correções",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Palpite Forte sortea entre os melhores candidatos estatísticos — dezenas diferentes a cada refresh",
+          "Super Sete: dígitos por coluna também variam (continuam entre os mais atrasados)",
+        ],
+      },
+    ],
+  },
+  {
     version: "3.5.0",
     date: "2026-10-10",
     type: "minor",

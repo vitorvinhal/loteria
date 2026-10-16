@@ -41,6 +41,16 @@ function somar(dezenas: number[]): number {
   return dezenas.reduce((a, b) => a + b, 0);
 }
 
+function sorteioEntre<T>(pool: T[], quantos: number): T[] {
+  const copia = [...pool];
+  const sorteados: T[] = [];
+  for (let i = 0; i < quantos && copia.length; i++) {
+    const idx = Math.floor(Math.random() * copia.length);
+    sorteados.push(copia.splice(idx, 1)[0]);
+  }
+  return sorteados;
+}
+
 function ajustarSoma(loteria: Loteria, selecionadas: number[], alvo: number, faixa: [number, number]): number[] {
   const dentro = (v: number) => v >= faixa[0] && v <= faixa[1];
   let atual = [...selecionadas].sort((a, b) => a - b);
@@ -82,9 +92,11 @@ export function gerarPalpiteForte(loteria: Loteria, stats: Estatisticas): Palpit
     const ordenados = digitos.sort(
       (a, b) => (stats.atraso.get(b) ?? 0) - (stats.atraso.get(a) ?? 0) || a - b
     );
+    const pool = ordenados.slice(0, Math.max(cfg.total_colunas, Math.min(ordenados.length, cfg.total_colunas * 2)));
+    const sorteados = sorteioEntre(pool, cfg.total_colunas);
     const dezenas: number[] = [];
     for (let c = 0; c < cfg.total_colunas; c++) {
-      dezenas.push(ordenados[c % ordenados.length]);
+      dezenas.push(sorteados[c % sorteados.length]);
     }
     const soma = somar(dezenas);
     const pares = dezenas.filter((d) => d % 2 === 0).length;
@@ -106,14 +118,19 @@ export function gerarPalpiteForte(loteria: Loteria, stats: Estatisticas): Palpit
 
   const rankHot = new Map(hot.map((d, i) => [d, i] as const));
   const rankAtras = new Map(atrasadas.map((d, i) => [d, i] as const));
-  const candidatos = universo(loteria).sort((a, b) => {
-    const sa = Math.min(rankHot.get(a) ?? 0, n) + Math.min(rankAtras.get(a) ?? 0, n);
-    const sb = Math.min(rankHot.get(b) ?? 0, n) + Math.min(rankAtras.get(b) ?? 0, n);
-    return sa - sb || a - b;
-  });
-  const selecionadas = candidatos.slice(0, n).sort((a, b) => a - b);
+  const universoArr = universo(loteria);
+  const pontuados = universoArr
+    .map((d) => {
+      const sa = Math.min(rankHot.get(d) ?? 0, n) + Math.min(rankAtras.get(d) ?? 0, n);
+      return { d, sa };
+    })
+    .sort((a, b) => a.sa - b.sa || a.d - b.d);
+
+  const tamanhoPool = Math.min(universoArr.length, Math.max(n * 3, Math.ceil(universoArr.length * 0.25)));
+  const pool = pontuados.slice(0, tamanhoPool).map((x) => x.d);
+  const sorteadas = sorteioEntre(pool, n);
   const faixa = stats.soma_concursos.faixa_frequente;
-  const dezenas = ajustarSoma(loteria, selecionadas, stats.soma_concursos.media, faixa);
+  const dezenas = ajustarSoma(loteria, sorteadas, stats.soma_concursos.media, faixa);
 
   const topHot = new Set(hot.slice(0, Math.max(1, Math.ceil(n / 2))));
   const topAtras = new Set(atrasadas.slice(0, Math.max(1, Math.ceil(n / 2))));
