@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
+import { APP_VERSION } from "@/lib/version";
 import {
   Zap,
   BarChart3,
@@ -39,6 +40,33 @@ interface ChangelogEntry {
 }
 
 const changelog: ChangelogEntry[] = [
+  {
+    version: "3.6.0",
+    date: "2026-10-27",
+    type: "minor",
+    tag: "Painel admin com controles de visibilidade e Super Sete com colunas uniformes",
+    sections: [
+      {
+        title: "Novo",
+        icon: <Layers className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Painel admin: escolha quais abas aparecem na navegação (9 abas controláveis)",
+          "Painel admin: liga/desliga as estratégias de dezenas quentes e frias",
+          "Painel admin: mostra/esconde o chat de IA (mantido visível para admins)",
+        ],
+      },
+      {
+        title: "Correção",
+        icon: <CheckCircle2 className="w-5 h-5" />,
+        color: "text-emerald-500",
+        items: [
+          "Super Sete: distribuição de colunas agora uniforme (embaralha e preenche por ordem)",
+          "Apostas múltiplas de 8 a 21 números respeitam a faixa por coluna (1-2 e 2-3)",
+        ],
+      },
+    ],
+  },
   {
     version: "3.5.1",
     date: "2026-10-10",
@@ -1250,7 +1278,10 @@ export default function ChangelogPage() {
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">
       <div className="space-y-2 mb-10">
-        <h1 className="text-4xl font-bold tracking-tight">Changelog</h1>
+        <h1 className="text-4xl font-bold tracking-tight">
+          Changelog{" "}
+          <Badge variant="outline" className="align-middle">v{APP_VERSION}</Badge>
+        </h1>
         <p className="text-muted-foreground text-lg">
           Histórico de todas as versões e alterações do sistema Loterias CAIXA.
         </p>

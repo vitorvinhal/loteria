@@ -24,15 +24,29 @@ function distribuirColunas(
   const counts = new Array(cfg.total_colunas).fill(faixa.min_coluna);
   let restante = totalSeguro - faixa.min_coluna * cfg.total_colunas;
 
-  let guarda = 0;
-  while (restante > 0 && guarda <= cfg.total_colunas * 10) {
-    guarda++;
-    const idx = Math.floor(rng() * cfg.total_colunas);
-    if (counts[idx] < faixa.max_coluna) {
-      counts[idx]++;
+  // Distribui os números restantes de forma determinística e uniforme.
+  // Ordena índices aleatoriamente e adiciona 1 a cada coluna que ainda
+  // não atingiu o máximo permitido, garantindo colunas uniformes.
+  const indices = Array.from({ length: cfg.total_colunas }, (_, i) => i);
+  // Embaralha (Fisher-Yates) para ordem aleatória, mas determinística em rng
+  for (let i = indices.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [indices[i], indices[j]] = [indices[j], indices[i]];
+  }
+
+  let idx = 0;
+  // Máximo de incrementos possíveis: cada coluna pode subir no máximo
+  // (max_coluna - min_coluna). Total = total_colunas * (max - min).
+  const maxIncrementos = cfg.total_colunas * (faixa.max_coluna - faixa.min_coluna);
+  while (restante > 0 && idx <= maxIncrementos + cfg.total_colunas) {
+    const col = indices[idx % cfg.total_colunas];
+    if (counts[col] < faixa.max_coluna) {
+      counts[col]++;
       restante--;
     }
+    idx++;
   }
+
   return counts;
 }
 

@@ -1,5 +1,52 @@
 ===============================================================================
 CHANGELOG TÉCNICO - Loterias CAIXA Omega
+Versão: 3.6.0
+Data: 27/10/2026
+===============================================================================
+
+RESUMO DA VERSÃO
+----------------
+Painel admin com controles de visibilidade de abas, toggle hot/cold e
+chat de IA. Correção da distribuição de colunas do Super Sete para
+garantir uniformidade e >7 números.
+
+===============================================================================
+MUDANÇAS DETALHADAS
+===============================================================================
+
+1. NOVO: Controles de visibilidade no painel admin
+   Arquivos: src/lib/admin-settings.ts, src/components/admin/{TabsControl,
+   HotColdToggle,AiChatToggle}.tsx, src/app/admin/page.tsx
+   - AdminSettings persistido em localStorage: visibilidade de abas,
+     hot/cold, chat de IA.
+   - TabsControl: seleção de abas visíveis na navegação.
+   - HotColdToggle: ativa/desativa estratégias quentes/frias.
+   - AiChatToggle: mostra/esconde widget de chat IA.
+
+2. ALTERAÇÃO: Navbar respeita visibilidade de abas
+   Arquivos: src/components/layout/navbar.tsx
+   - navItems filtrados por getAdminSettings().visibleTabs.
+
+3. ALTERAÇÃO: Widget de IA respeita toggle do admin
+   Arquivos: src/components/assistant/assistant-widget.tsx
+   - Widget oculto para não-admin quando aiChatEnabled = false.
+
+4. ALTERAÇÃO: Estratégias quentes/frias respeitam toggle
+   Arquivos: src/modules/strategies/index.ts
+   - getEstrategiasAtivas() filtra 'quentes' e 'frias' quando
+     hotColdEnabled = false.
+
+5. CORREÇÃO: Distribuição de colunas do Super Sete
+   Arquivos: src/modules/lottery/posicional.ts
+   - distribuirColunas() reescrita: embaralha índices (Fisher-Yates)
+     e distribui excedente sequencialmente, garantindo colunas
+     uniformes para qualquer total > 7.
+
+6. META: Bump de versão 3.5.1 -> 3.6.0
+   Arquivos: src/lib/version.ts, package.json
+
+===============================================================================
+CHANGELOG TÉCNICO - Loterias CAIXA Omega
 Versão: 3.0.0
 Data: 09/10/2026
 ===============================================================================

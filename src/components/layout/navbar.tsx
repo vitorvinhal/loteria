@@ -8,17 +8,18 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useAuth } from "@/lib/supabase/auth/provider";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { isAdminUser } from "@/lib/admin";
+import { getAdminSettings } from "@/lib/admin-settings";
 
-const navItems = [
-  { href: "/gerar/megasena", label: "Gerar Jogos", icon: Dices },
-  { href: "/criar-jogo/megasena", label: "Criar Jogo", icon: PenTool },
-  { href: "/historico/jogos", label: "Histórico", icon: History },
-  { href: "/analise", label: "Análise", icon: BarChart3 },
-  { href: "/comparar", label: "Comparar", icon: GitCompare },
-  { href: "/estatisticas", label: "Estatísticas", icon: PieChart },
-  { href: "/concursos", label: "Concursos", icon: BookOpen },
-  { href: "/sincronizar", label: "Sincronizar", icon: RefreshCw },
-  { href: "/bolao", label: "Bolão", icon: Users },
+const ALL_NAV_ITEMS = [
+  { id: "gerar", href: "/gerar/megasena", label: "Gerar Jogos", icon: Dices },
+  { id: "criar-jogo", href: "/criar-jogo/megasena", label: "Criar Jogo", icon: PenTool },
+  { id: "historico", href: "/historico/jogos", label: "Histórico", icon: History },
+  { id: "analise", href: "/analise", label: "Análise", icon: BarChart3 },
+  { id: "comparar", href: "/comparar", label: "Comparar", icon: GitCompare },
+  { id: "estatisticas", href: "/estatisticas", label: "Estatísticas", icon: PieChart },
+  { id: "concursos", href: "/concursos", label: "Concursos", icon: BookOpen },
+  { id: "sincronizar", href: "/sincronizar", label: "Sincronizar", icon: RefreshCw },
+  { id: "bolao", href: "/bolao", label: "Bolão", icon: Users },
 ];
 
 export function Navbar() {
@@ -26,6 +27,9 @@ export function Navbar() {
   const { user, isLoading, signOut, avatarUrl } = useAuth();
 
   const isAdmin = isAdminUser(user);
+  const navItems = ALL_NAV_ITEMS.filter(
+    (item) => getAdminSettings().visibleTabs.includes(item.id)
+  );
 
   return (
     <header className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">

@@ -1,4 +1,5 @@
 import { Loteria, Estatisticas, Estrategia } from '@/types';
+import { isHotColdEnabled } from '@/lib/admin-settings';
 
 export interface ResultadoGeracao {
   dezenas: number[];
@@ -119,5 +120,12 @@ export function getEstrategiaPorSlug(slug: string): Estrategia | undefined {
 }
 
 export function getEstrategiasAtivas(): Estrategia[] {
-  return ESTRATEGIAS.filter(e => e.ativo);
+  return ESTRATEGIAS.filter((e) => {
+    if (!e.ativo) return false;
+    // Estratégia de quentes/frias respeita o toggle do admin
+    if ((e.slug === 'quentes' || e.slug === 'frias') && typeof window !== 'undefined') {
+      if (!isHotColdEnabled()) return false;
+    }
+    return true;
+  });
 }

@@ -20,6 +20,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { isAdminUser } from "@/lib/admin";
+import { isAiChatEnabled } from "@/lib/admin-settings";
 import { LOTERIAS } from "@/lib/loterias";
 import {
   MessageCircle,
@@ -145,6 +146,7 @@ export function AssistantWidget() {
   const [palpiteDezenas, setPalpiteDezenas] = useState("");
   const [enviandoPalpite, setEnviandoPalpite] = useState(false);
   const [liveOk, setLiveOk] = useState(false);
+  const [aiChatEnabled, setAiChatEnabled] = useState(true);
 
   const msgsRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -165,6 +167,10 @@ export function AssistantWidget() {
   useEffect(() => {
     if (erroVoz) toast.error(erroVoz);
   }, [erroVoz]);
+
+  useEffect(() => {
+    setAiChatEnabled(isAiChatEnabled());
+  }, []);
 
   const irParaFim = useCallback(() => {
     requestAnimationFrame(() => {
@@ -436,6 +442,7 @@ export function AssistantWidget() {
   }, [palpiteDezenas, palpiteLoteria, carregarRanking]);
 
   if (isLoading || !user) return null;
+  if (!aiChatEnabled && !ehAdmin) return null;
 
   const painelLigacao = (
     <VoiceCallPanel

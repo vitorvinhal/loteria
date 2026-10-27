@@ -15,7 +15,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/lib/supabase/auth/provider";
-import { ShieldCheck, Trash2, Users, History, RefreshCw, ArrowLeft, User, Bot, Zap } from "lucide-react";
+import { TabsControl } from "@/components/admin/TabsControl";
+import { HotColdToggle } from "@/components/admin/HotColdToggle";
+import { AiChatToggle } from "@/components/admin/AiChatToggle";
+import { ShieldCheck, Trash2, Users, History, RefreshCw, ArrowLeft, User, Bot, Zap, Settings } from "lucide-react";
 
 interface AdminLote {
   id: string;
@@ -297,6 +300,19 @@ export default function AdminPage() {
           <RefreshCw className={`h-4 w-4 mr-2 ${carregando ? "animate-spin" : ""}`} />
           Atualizar
         </Button>
+      </div>
+
+      {/* Controles de visibilidade */}
+      <div className="mb-6">
+        <h2 className="text-lg font-bold mb-4 flex items-center gap-2">
+          <Settings className="h-5 w-5 text-primary" />
+          Controles de Visibilidade
+        </h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <TabsControl />
+          <HotColdToggle />
+          <AiChatToggle />
+        </div>
       </div>
 
       {/* Stats */}
